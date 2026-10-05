@@ -1,0 +1,24 @@
+{
+  "name": "emre-lead",
+  "version": "1.0.0",
+  "description": "emre-lead: RocketReach + AI hedef bulma + Gmail kuyruk platformu",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch --env-file=.env server.js",
+    "start": "node --env-file=.env server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "imapflow": "^2.2.5",
+    "multer": "^2.4.0",
+    "nodemailer": "^10.0.15",
+    "xlsx": "^0.18.5"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

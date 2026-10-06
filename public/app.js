@@ -1,4 +1,4 @@
-// emre-lead SPA
+// Lead-AI SPA
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const main = $('main');
@@ -109,7 +109,7 @@ $('burger').onclick = () => drawer(true); $('scrim').onclick = () => drawer(fals
 $('nav').onclick = e => { const a = e.target.closest('a[data-p]'); if (a) { location.hash = a.dataset.p; drawer(false); } };
 addEventListener('hashchange', () => ME && route());
 function markNav() {
-  let h = decodeURIComponent(location.hash.slice(1) || 'dash'); if (h.startsWith('c/')) h = 'campaigns';
+  let h = decodeURIComponent(location.hash.slice(1) || 'dash'); if (h.startsWith('c/')) h = 'campaigns'; if (h.startsWith('templates/')) h = 'templates';
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', h === a.dataset.p || h.startsWith(a.dataset.p + '/')));
 }
 let timer;
@@ -134,7 +134,7 @@ PAGES.dash = tryT(async () => {
     [s.setup.gmail, 'Gmail bağla ve test et', 'settings'], [s.setup.telegram, 'Telegram bildirimlerini bağla', 'settings'], [CAMPS.length > 0, 'İlk kampanyayı oluştur', 'newcamp'],
   ];
   const done = steps.filter(x => x[0]).length;
-  main.innerHTML = head(`Merhaba ${esc(ME.name)} 👋`, 'Hedef bul → kişiyi çıkar → mailini bul → kuyrukla gönder', `<a class="btn pri" href="#newcamp">＋ Yeni kampanya</a>`) +
+  main.innerHTML = head(`Merhaba ${esc(ME.name)} 👋`, 'Firma bul → yetkiliyi çıkar → mailini bul → şablon seç → Gmail\'i yakmadan gönder', `<a class="btn pri" href="#newcamp">＋ Yeni kampanya</a>`) +
   `${Math.max(s.limits.lookup, s.limits.arama) ? `<div class="banner">⏳ RocketReach saatlik limit: lookup ${s.limits.lookup ? s.limits.lookup + ' dk' : 'açık'} · arama ${s.limits.arama ? s.limits.arama + ' dk' : 'açık'} — kuyruk kendiliğinden devam edecek.</div>` : ''}
   <div class="grid g5 kpis" style="margin-bottom:16px">
     <div class="card kpi"><b>${s.companies}</b><span>Hedef firma</span></div>
@@ -215,24 +215,35 @@ PAGES.project = tryT(async () => {
 });
 
 // ================= Kampanyalar =================
+const COUNTRIES = ['Türkiye', 'Almanya', 'Avusturya', 'İsviçre', 'Hollanda', 'Belçika', 'Fransa', 'İtalya', 'İspanya', 'Polonya', 'Çekya', 'Romanya', 'Bulgaristan', 'Macaristan', 'İngiltere', 'İrlanda', 'İsveç', 'Danimarka', 'Norveç', 'ABD', 'Kanada', 'Meksika', 'Brezilya', 'BAE', 'Suudi Arabistan', 'Katar', 'Mısır', 'Fas', 'Azerbaycan', 'Kazakistan', 'Özbekistan', 'Gürcistan', 'Irak', 'Hindistan', 'Endonezya', 'Malezya', 'Güney Afrika'];
 const SECTORS = ['Otomotiv yan sanayi', 'Metal / döküm', 'Gıda üretimi', 'Tekstil', 'Plastik / kauçuk', 'Kimya', 'Beyaz eşya / elektronik', 'Mobilya', 'Ambalaj', 'İnşaat malzemesi', 'Lojistik / depo', 'Enerji', 'Tersane', 'İlaç'];
 const PLACES = ['Kocaeli', 'Bursa', 'İstanbul', 'Sakarya', 'Tekirdağ', 'Manisa', 'İzmir', 'Ankara', 'Konya', 'Kayseri', 'Gaziantep', 'Denizli', 'Trabzon', 'Eskişehir'];
 PAGES.newcamp = () => {
   main.innerHTML = head('Firma Bul', 'Sektör ya da konum yaz (ikisi de olur, biri de yeter). AI web\'den gerçek firmaları bulur, sonra RocketReach ile yetkilileri ve maillerini çıkarır.') +
   `<form class="card quick" id="qf"><div class="grid g2 big">
     <label>Sektör<input name="sector" id="qS" placeholder="ör. Otomotiv yan sanayi" autocomplete="off"></label>
-    <label>Konum<input name="location" id="qL" placeholder="ör. Kocaeli, Gebze OSB" autocomplete="off"></label></div>
+    <label>Şehir / bölge<input name="location" id="qL" placeholder="ör. Kocaeli, Gebze OSB · Stuttgart · Ontario" autocomplete="off"></label></div>
+    <div class="grid g2" style="margin-top:12px"><label>Ülke<select name="country" id="qC">${COUNTRIES.map(c => `<option>${c}</option>`).join('')}</select></label><div></div></div>
     <div class="chips" style="margin-top:10px">${SECTORS.map(x => `<span class="chip sug" data-qs="${esc(x)}">${esc(x)}</span>`).join('')}</div>
     <div class="chips" style="margin-top:8px">${PLACES.map(x => `<span class="chip sug" data-ql="${esc(x)}">📍 ${esc(x)}</span>`).join('')}</div>
     <div class="grid g3" style="margin-top:16px"><label>Firma sayısı<select name="count">${[10, 20, 40, 60].map(n => `<option ${n === 20 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label>Büyüklük<select name="size"><option value="">Farketmez</option><option>50+ çalışan</option><option>100+ çalışan</option><option>250+ çalışan</option><option>500+ çalışan (kurumsal)</option></select></label>
       <label>Ek not (opsiyonel)<input name="note" placeholder="ör. OSB içindekiler, ihracatçılar"></label></div>
     <div class="row" style="margin-top:14px"><label class="inline"><input type="checkbox" name="people" checked> Firmalardaki yetkilileri de bul</label><label class="inline"><input type="checkbox" name="lookup" checked> Maillerini de çıkar</label></div>
-    <div class="row" style="margin-top:18px"><button class="btn pri lg">🔎 Firmaları bul</button><span class="mut" style="font-size:12.5px">İlk sonuçlar ~1 dk içinde gelir, gerisi arka planda devam eder.</span></div></form>`;
+    <div class="row" style="margin-top:18px"><button class="btn pri lg">🔎 Firmaları bul</button><span class="mut" style="font-size:12.5px">İlk sonuçlar ~1 dk içinde gelir, gerisi arka planda devam eder.</span></div></form>
+  <form class="card quick" id="lf2"><h3>…ya da firma listesini sen ver</h3><p class="hint">Her satıra bir firma: <code>Firma adı, alanadi.com</code> (alan adı varsa daha isabetli). Her firmada yetkililer aranır ve mailleri çıkarılır.</p>
+    <textarea name="text" rows="6" placeholder="Farplas Otomotiv, farplas.com&#10;Assan Hanil, assanhanil.com.tr&#10;Bosch Bursa, bosch.com.tr"></textarea>
+    <div class="grid g2" style="margin-top:12px"><label>Kampanya adı<input name="name" placeholder="ör. Bursa otomotiv listem"></label><label>Aranacak unvanlar (virgülle, boş = varsayılan)<input name="titles" placeholder="İSG Müdürü, Fabrika Müdürü, Plant Manager"></label></div>
+    <div class="row" style="margin-top:14px"><label class="inline"><input type="checkbox" name="lookup" checked> Maillerini de çıkar</label><span class="sp"></span><button class="btn pri">👥 Yetkilileri bul</button></div></form>`;
   main.onclick = e => {
     const a = e.target.closest('[data-qs]'); if (a) $('qS').value = a.dataset.qs;
     const b = e.target.closest('[data-ql]'); if (b) $('qL').value = $('qL').value && !$('qL').value.includes(b.dataset.ql) ? $('qL').value + ', ' + b.dataset.ql : b.dataset.ql;
   };
+  $('lf2').onsubmit = e => { e.preventDefault(); busyBtn(e.target.querySelector('.btn.pri'), async () => {
+    const f = Object.fromEntries(new FormData(e.target)); f.lookup = !!f.lookup;
+    const { id } = await post('/api/campaigns/from-list', f); await loadCamps(); location.hash = `c/${id}/companies`; toast('Yetkililer aranıyor…');
+  }, 'Hazırlanıyor'); };
+  $('qC').onchange = e => { if (e.target.value !== 'Türkiye') $('qL').placeholder = 'şehir/eyalet (opsiyonel)'; };
   $('qf').onsubmit = e => { e.preventDefault(); busyBtn(e.target.querySelector('.btn.pri'), async () => {
     const f = Object.fromEntries(new FormData(e.target)); f.people = !!f.people; f.lookup = !!f.lookup;
     const { id } = await post('/api/campaigns/quick', f); await loadCamps(); location.hash = `c/${id}/companies`; toast('AI firmaları arıyor…');
@@ -727,21 +738,24 @@ PAGES.schedule = tryT(async () => {
     <label>Gönderim günleri</label><div class="chips" id="sDays" style="margin:6px 0 14px">${[1, 2, 3, 4, 5, 6, 0].map(d => `<span class="chip sug ${sc.days.includes(d) ? 'on' : ''}" data-d="${d}">${DAYS[d]}</span>`).join('')}</div>
     <div class="grid g2"><label>Başlangıç saati<input type="number" id="sStart" min="0" max="23" value="${sc.start}"></label><label>Bitiş saati<input type="number" id="sEnd" min="1" max="24" value="${sc.end}"></label>
     <label>Günlük maksimum mail<input type="number" id="sDaily" min="1" max="500" value="${sc.daily}"></label><div></div>
+    <div class="toggle-row" style="grid-column:1/-1"><div><b>Isınma modu (önerilir)</b><small>Yeni hesapta günde 10 mail ile başlar, her gün +3 artar; günlük limite ulaşınca sabitlenir.</small></div><label class="switch"><input type="checkbox" id="sWarm" ${sc.warmup !== false ? 'checked' : ''}><i></i></label></div>
+    <label>Aynı firmaya günde en fazla<input type="number" id="sDom" min="1" max="10" value="${sc.per_domain || 2}"></label><div></div>
     <label>Mailler arası en az (sn)<input type="number" id="sMin" min="20" value="${sc.min_delay}"></label><label>En fazla (sn)<input type="number" id="sMax" min="20" value="${sc.max_delay}"></label></div>
     <div class="toggle-row" style="margin-top:14px"><div><b>Gönderimi duraklat</b><small>Tüm kuyruk bekler</small></div><label class="switch"><input type="checkbox" id="sPause" ${s.sending_paused ? 'checked' : ''}><i></i></label></div>
     <button class="btn pri" id="sSave" style="margin-top:10px" ${ME.role !== 'admin' ? 'disabled title="Yönetici"' : ''}>Kaydet</button></div>
   <div><div class="card"><h3 style="margin-bottom:12px">Şu an</h3><dl class="dl"><dt>Durum</dt><dd>${st.ok ? '<span class="pill ok">● Gönderiyor</span>' : `<span class="pill warn">${esc(st.why)}</span>`}</dd>
-    <dt>Bugün gönderilen</dt><dd>${st.today} / ${st.daily}</dd><dt>Sırada</dt><dd>${st.queued}</dd><dt>Taslak</dt><dd>${st.counts['taslak'] || 0}</dd><dt>Toplam gönderilen</dt><dd>${st.counts['gönderildi'] || 0}</dd><dt>Hatalı</dt><dd>${st.counts['hata'] || 0}</dd></dl>
+    <dt>Bugün gönderilen</dt><dd>${st.today} / ${st.daily}${st.warmup ? ` <span class="pill info">ısınma · hedef ${st.max}</span>` : ''}</dd><dt>Sırada</dt><dd>${st.queued}</dd><dt>Taslak</dt><dd>${st.counts['taslak'] || 0}</dd><dt>Toplam gönderilen</dt><dd>${st.counts['gönderildi'] || 0}</dd><dt>Hatalı</dt><dd>${st.counts['hata'] || 0}</dd></dl>
     <div class="row" style="margin-top:14px"><a href="#outbox/sırada" class="btn sm">Kuyruğu gör</a><button class="btn sm" id="sReply">Yanıtları şimdi kontrol et</button></div></div>
     <div class="card"><h3>Ban yememek için</h3><ul class="mut" style="margin:10px 0 0;padding-left:18px;font-size:13px;line-height:1.7">
-      <li>Gmail'de 2 adımlı doğrulama + <b>uygulama şifresi</b> kullan.</li><li>Kişiye özel, kısa, linksiz ilk mail (AI böyle yazıyor).</li>
+      <li>Gmail'de 2 adımlı doğrulama + <b>uygulama şifresi</b> kullan.</li><li><b>Isınma modu</b> yeni hesapta yavaş başlar; <b>aynı firmaya günde 2</b>'den fazla mail gitmez.</li>
+      <li>Aynı kişiye 60 gün içinde ikinci ilk-mail gitmez. Geri dönen (bounce) adresler otomatik engellenir; 24 saatte 3 geri dönüşte gönderim kendini durdurur.</li><li>Kişiye özel, kısa, linksiz ilk mail (AI böyle yazıyor).</li>
       <li>Yanıt gelen kişiye takip otomatik durur (gelen kutusu 5 dk'da bir taranır).</li><li>Engel listesindeki adres/domainlere asla gönderilmez.</li>
       <li>Kendi alan adınla (Workspace) gönderirsen SPF/DKIM/DMARC ayarlı olsun.</li></ul></div></div></div>`;
   main.onclick = e => { const d = e.target.closest('[data-d]'); if (d) d.classList.toggle('on'); };
   $('sReply').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/sending/check-replies'); toast('Gelen kutusu tarandı'); }, 'Taranıyor');
   $('sSave').onclick = e => busyBtn(e.currentTarget, async () => {
     const days = [...document.querySelectorAll('#sDays .on')].map(x => +x.dataset.d);
-    await put('/api/settings', { schedule: { days, start: +$('sStart').value, end: +$('sEnd').value, daily: +$('sDaily').value, min_delay: +$('sMin').value, max_delay: +$('sMax').value }, sending_paused: $('sPause').checked });
+    await put('/api/settings', { schedule: { days, start: +$('sStart').value, end: +$('sEnd').value, daily: +$('sDaily').value, min_delay: +$('sMin').value, max_delay: +$('sMax').value, warmup: $('sWarm').checked, per_domain: +$('sDom').value }, sending_paused: $('sPause').checked });
     toast('Takvim kaydedildi'); PAGES.schedule();
   }, 'Kaydediliyor');
 });
@@ -867,6 +881,98 @@ PAGES.users = tryT(async () => {
     const a = e.target.closest('[data-act]'); if (a) { await put('/api/users/' + a.dataset.act, { active: +a.dataset.v }); PAGES.users(); }
     const d = e.target.closest('[data-udel]'); if (d && confirm('Kullanıcı silinsin mi?')) { await del('/api/users/' + d.dataset.udel); PAGES.users(); }
   });
+});
+
+
+// ================= Mail Listesi (kişi başına şablon) =================
+let TPLS = [];
+const tplOpts = (sel, none = '— şablon seç —') => `<option value="">${none}</option>` + TPLS.map(t => `<option value="${t.id}" ${+sel === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+const autoTpl = c => { // unvan/ülkeye göre öneri
+  const t = `${c.title || ''} ${c.company || ''}`.toLowerCase(), en = !/[çğıöşü]/i.test(c.name + c.company) && /@[^.]+\.(com|de|co\.uk|fr|it|nl|es|us)$/.test(c.email || '') && !/\.tr$/.test(c.email || '');
+  const pick = re => TPLS.find(x => re.test(x.name))?.id;
+  if (en) return pick(/^EN · Safety/);
+  if (/isg|iş güvenliği|hse|ehs|safety|güvenlik/.test(t)) return pick(/^İSG · KKD/);
+  if (/üretim|production|plant|fabrika|operasyon|operation/.test(t)) return pick(/^Verimlilik/);
+  if (/kalite|quality/.test(t)) return pick(/^Kalite/);
+  if (/lojistik|depo|warehouse|logistic|sevkiyat/.test(t)) return pick(/Forklift/);
+  if (/genel müdür|ceo|general manager|kurucu|founder|owner|sahibi|yönetim kurulu/.test(t)) return pick(/^Üst yönetim/);
+  return pick(/^Genel ·/);
+};
+PAGES.maillist = tryT(async () => {
+  [TPLS] = await Promise.all([api('/api/templates')]); await loadCamps();
+  let rows = [], choice = {}, f = { campaign: '', q: '', state: 'new' };
+  main.innerHTML = head('Mail Listesi', 'Maili bulunan herkes burada. Kişileri seç, herkese ayrı şablon ata (veya hepsine tek şablon), kuyruğa al. Gönderim Gmail\'i korumak için takvime göre yavaş yavaş yapılır.',
+    '<a class="btn" href="#templates">Şablonlar</a><a class="btn" href="#outbox/sırada">Kuyruk</a>') +
+  `<div class="row" style="margin-bottom:12px"><input id="mlq" placeholder="İsim, firma, unvan, mail…" style="max-width:300px"><select id="mlc" style="width:auto">${campOpts('Tüm kampanyalar')}</select>
+    <div class="tabs" id="mls"><button data-s="new" class="on">Hiç mail atılmamış</button><button data-s="">Tümü</button><button data-s="sent">Mail atılmış</button></div></div>
+  <div id="mlt"></div>
+  <div class="selbar"><b id="mlN">Kişi seç</b><span class="sp"></span><select id="mlAll" style="max-width:280px">${tplOpts('', 'Seçilenlere şablon uygula…')}</select>
+    <button class="btn" id="mlAuto" title="Unvana göre uygun şablonu otomatik seç">✨ Unvana göre otomatik</button><button class="btn" id="mlPrev">Önizle</button><button class="btn" id="mlGo">✉ Kuyruğa al</button></div>`;
+  const ids = () => [...main.querySelectorAll('[data-ml]:checked')].map(x => +x.dataset.ml);
+  const upd = () => { const n = ids().length; $('mlN').textContent = n ? `${n} kişi seçili` : 'Kişi seç'; };
+  const draw = async () => {
+    rows = await api('/api/maillist?' + new URLSearchParams(f));
+    $('mlt').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th class="c"><input type="checkbox" id="mlA"></th><th>Kişi</th><th>Firma</th><th>Mail</th><th class="hide-m">Kampanya</th><th>Son durum</th><th style="min-width:230px">Şablon</th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td class="c"><input type="checkbox" data-ml="${r.id}" ${r.blocked ? 'disabled title="Engel listesinde"' : ''}></td><td class="w"><div class="n">${esc(r.name)}</div><small>${esc(r.title)}</small></td>
+      <td>${esc(r.company)}<small>${esc(r.location || '')}</small></td><td><span class="mail">${esc(r.email)}</span> ${li(r.linkedin)}</td><td class="hide-m"><small>${esc(r.campaigns || '—')}</small></td>
+      <td>${r.blocked ? pill('engelli') : r.replied ? pill('yanıtladı') : r.last_status ? pill(r.last_status) : '<span class="mut">yeni</span>'}${r.last_sent ? `<small>${fmtDate(r.last_sent)}</small>` : ''}</td>
+      <td><select data-tp="${r.id}">${tplOpts(choice[r.id])}</select></td></tr>`).join('')}</tbody></table></div>`
+      : empty('Bu filtrede maili olan kişi yok', 'Kampanyalardan ya da Kişi Ara\'dan mail bulduğunda burada listelenir.');
+    upd();
+  };
+  let t; $('mlq').oninput = e => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value; draw(); }, 300); };
+  $('mlc').onchange = e => { f.campaign = e.target.value; draw(); };
+  $('mls').onclick = e => { const b = e.target.closest('[data-s]'); if (!b) return; f.state = b.dataset.s; $('mls').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); draw(); };
+  main.onchange = e => {
+    if (e.target.id === 'mlA') main.querySelectorAll('[data-ml]:not(:disabled)').forEach(x => x.checked = e.target.checked);
+    const tp = e.target.closest('[data-tp]'); if (tp) { choice[tp.dataset.tp] = tp.value; const cb = main.querySelector(`[data-ml="${tp.dataset.tp}"]`); if (cb && tp.value && !cb.disabled) cb.checked = true; }
+    upd();
+  };
+  $('mlAll').onchange = e => { const v = e.target.value; if (!v) return; const s = ids(); if (!s.length) { toast('Önce kişi seç', true); e.target.value = ''; return; } s.forEach(id => { choice[id] = v; const el = main.querySelector(`[data-tp="${id}"]`); if (el) el.value = v; }); e.target.value = ''; toast(`${s.length} kişiye şablon atandı`); };
+  $('mlAuto').onclick = () => { const s = ids().length ? ids() : rows.filter(r => !r.blocked).map(r => r.id); let n = 0; for (const id of s) { const r = rows.find(x => x.id === id), v = autoTpl(r); if (v) { choice[id] = v; n++; const el = main.querySelector(`[data-tp="${id}"]`); if (el) el.value = v; } } toast(`${n} kişiye unvanına göre şablon seçildi`); };
+  $('mlPrev').onclick = tryT(async () => {
+    const id = ids()[0] || rows[0]?.id, tp = choice[id]; if (!id || !tp) return toast('Şablonu seçilmiş bir kişi seç', true);
+    const T = TPLS.find(x => x.id === +tp), r = await post('/api/mail/preview', { subject: T.subject, body: T.body, contact_id: id });
+    modal('Önizleme · ' + (rows.find(x => x.id === id)?.name || ''), `<div class="preview"><b>${esc(r.subject)}</b><hr style="border:0;border-top:1px solid #eee">${r.html}</div>`);
+  });
+  $('mlGo').onclick = e => busyBtn(e.currentTarget, async () => {
+    const s = ids(); if (!s.length) return toast('Kişi seç', true);
+    const missing = s.filter(id => !choice[id]); if (missing.length) return toast(`${missing.length} kişiye şablon seçilmedi (alttan "Seçilenlere şablon uygula" ya da "Unvana göre otomatik")`, true);
+    const st = await api('/api/sending');
+    if (!confirm(`${s.length} kişi kuyruğa alınacak.\n\nGmail'i korumak için bugün en fazla ${st.daily - st.today} mail daha gider (günlük limit ${st.daily}${st.warmup ? ', ısınma modu' : ''}), mailler arası 2–5 dk beklenir, aynı firmaya günde en fazla 2 mail gider. Kalanlar sonraki iş günlerine kalır.\n\nDevam?`)) return;
+    const r = await post('/api/outbox/compose-multi', { items: s.map(id => ({ contact_id: id, template_id: +choice[id] })), send: true });
+    const why = {}; r.skipped.forEach(x => why[x.why] = (why[x.why] || 0) + 1);
+    toast(`${r.added} mail kuyruğa alındı${r.skipped.length ? ' · atlanan: ' + Object.entries(why).map(([k, v]) => `${v} ${k}`).join(', ') : ''}`);
+    draw();
+  }, 'Kuyruğa alınıyor');
+  await draw();
+});
+
+// ================= Şablonlar =================
+PAGES.templates = tryT(async (sel) => {
+  TPLS = await api('/api/templates');
+  let cur = TPLS.find(t => t.id === +sel) || TPLS[0] || { id: 0, name: '', subject: '', body: '' };
+  const draw = () => {
+    main.innerHTML = head('Mail Şablonları', 'Hype Vision kataloğundan hazırlanmış toplantı isteyen şablonlar. Değişkenler alıcıya göre otomatik dolar. İmzan otomatik eklenir.', '<button class="btn pri" id="tNew">＋ Yeni şablon</button>') +
+    `<div class="grid" style="grid-template-columns:minmax(220px,320px) 1fr;align-items:start" id="tGrid">
+      <div class="card" style="padding:8px">${TPLS.map(t => `<a class="step" href="#templates/${t.id}" style="margin:4px;color:inherit;text-decoration:none;${t.id === cur.id ? 'border-color:var(--pri);background:var(--pri-soft)' : ''}"><span>${esc(t.name)}</span></a>`).join('') || '<p class="mut" style="padding:12px">Şablon yok</p>'}</div>
+      <div class="card"><label>Şablon adı<input id="tN" value="${esc(cur.name)}"></label><label style="margin-top:10px">Konu<input id="tS" value="${esc(cur.subject)}"></label>
+        <label style="margin-top:10px">İçerik<textarea id="tB" rows="16">${esc(cur.body)}</textarea></label>
+        <div class="chips" style="margin-top:8px">${VARS.map(v => `<span class="chip var" data-v="${v}">{{${v}}}</span>`).join('')}</div>
+        <div class="row" style="margin-top:14px"><button class="btn pri" id="tSv">Kaydet</button><button class="btn" id="tPv">Önizle</button><span class="sp"></span>${cur.id ? '<button class="btn danger" id="tDl">Sil</button>' : ''}</div>
+        <div id="tPo" style="margin-top:12px"></div></div></div>`;
+    if (innerWidth < 860) $('tGrid').style.gridTemplateColumns = '1fr';
+    let focus = $('tB'); $('tS').onfocus = e => focus = e.target; $('tB').onfocus = e => focus = e.target;
+    main.onclick = e => { const v = e.target.closest('[data-v]'); if (v) { const p = focus.selectionStart ?? focus.value.length; focus.value = focus.value.slice(0, p) + `{{${v.dataset.v}}}` + focus.value.slice(focus.selectionEnd ?? p); focus.focus(); } };
+    $('tNew').onclick = () => { cur = { id: 0, name: 'Yeni şablon', subject: '', body: 'Sayın {{adsoyad}},\n\n\n\nSaygılarımla,\n{{gonderen}}' }; draw(); };
+    $('tSv').onclick = tryT(async () => {
+      await post('/api/templates', { id: cur.id || undefined, name: $('tN').value, subject: $('tS').value, body: $('tB').value });
+      TPLS = await api('/api/templates'); cur = TPLS.find(t => t.name === $('tN').value) || TPLS[0]; toast('Şablon kaydedildi'); draw();
+    });
+    $('tPv').onclick = tryT(async () => { const r = await post('/api/mail/preview', { subject: $('tS').value, body: $('tB').value }); $('tPo').innerHTML = `<div class="preview"><b>${esc(r.subject)}</b><hr style="border:0;border-top:1px solid #eee">${r.html}</div>`; });
+    if ($('tDl')) $('tDl').onclick = tryT(async () => { if (!confirm('Şablon silinsin mi?')) return; await del('/api/templates/' + cur.id); TPLS = await api('/api/templates'); cur = TPLS[0] || { id: 0, name: '', subject: '', body: '' }; draw(); });
+  };
+  draw();
 });
 
 boot();

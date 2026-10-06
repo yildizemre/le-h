@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>emre-lead</title>
-<meta name="theme-color" content="#5b5bf7">
+<title>Lead-AI · Computer Vision</title>
+<meta name="theme-color" content="#0b1220">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%235b5bf7'/%3E%3Cstop offset='1' stop-color='%23a855f7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M10 8v16h12' stroke='white' stroke-width='3.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -9,18 +9,19 @@
 </head><body>
 <div id="login" class="login hide">
   <form class="login-card" id="lf">
-    <div class="brand big"><span class="logo">L</span><span>emre<b>-lead</b></span></div>
-    <p class="mut" style="margin:0">Hedef bul, mailini çıkar, kuyrukla gönder.</p>
+    <img src="https://hypevisionlab.com/hypevisionlogo.png" alt="Hype Vision" class="hvlogo big">
+    <div class="brand big"><span>Lead<b>-AI</b></span><small class="cv">Computer Vision</small></div>
+    <p class="mut" style="margin:0">Firma bul, yetkiliyi ve mailini çıkar, Gmail'i yakmadan gönder.</p>
     <label>Kullanıcı adı<input id="u" autocomplete="username" autocapitalize="none" required></label>
     <label>Şifre<input id="p" type="password" autocomplete="current-password" required></label>
     <button class="btn pri w100 lg">Giriş yap</button><p id="le" class="err"></p>
   </form>
 </div>
 <div id="shell" class="shell hide">
-  <header class="topbar"><button class="icon" id="burger" aria-label="Menü">☰</button><div class="brand"><span class="logo">L</span><span>emre<b>-lead</b></span></div><span class="sp"></span><span id="tbLimit"></span></header>
+  <header class="topbar"><button class="icon" id="burger" aria-label="Menü">☰</button><div class="brand"><span>Lead<b>-AI</b></span><small class="cv">CV</small></div><span class="sp"></span><span id="tbLimit"></span></header>
   <div class="scrim" id="scrim"></div>
   <aside class="side" id="side">
-    <div class="brand"><span class="logo">L</span><span>emre<b>-lead</b></span></div>
+    <div class="sidehead"><img src="https://hypevisionlab.com/hypevisionlogo.png" alt="Hype Vision" class="hvlogo"><div class="brand"><span>Lead<b>-AI</b></span><small class="cv">Computer Vision</small></div></div>
     <nav id="nav">
       <a data-p="dash"><i>◧</i>Panel</a>
       <a data-p="project"><i>◈</i>Şirket Profili</a>
@@ -34,7 +35,9 @@
       <a data-p="bulk"><i>⇪</i>Toplu Excel</a>
       <a data-p="history"><i>↺</i>Arama Geçmişi</a>
       <div class="navh">Gönderim</div>
-      <a data-p="outbox"><i>✉</i>Mail Kutusu <span class="badge" id="bOut"></span></a>
+      <a data-p="maillist"><i>✉</i>Mail Listesi</a>
+      <a data-p="templates"><i>✎</i>Şablonlar</a>
+      <a data-p="outbox"><i>⇄</i>Mail Kutusu <span class="badge" id="bOut"></span></a>
       <a data-p="queue"><i>⧗</i>İş Kuyruğu <span class="badge" id="bQ"></span></a>
       <a data-p="schedule"><i>◷</i>Gönderim Takvimi</a>
       <a data-p="suppress"><i>⊘</i>Engel Listesi</a>

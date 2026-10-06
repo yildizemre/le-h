@@ -5,9 +5,17 @@ const main = $('main');
 let ME = null, CAMPS = [];
 const sel = new Set(); // Kişilerim'de seçili kişi id'leri
 
+function netDown(on) {
+  let b = document.querySelector('.netbar');
+  if (on && !b) { b = document.createElement('div'); b.className = 'netbar'; b.textContent = 'Sunucuya ulaşılamıyor — internet bağlantını kontrol et, otomatik tekrar denenecek'; document.body.append(b); }
+  if (!on && b) b.remove();
+}
 async function api(url, opts = {}) {
   const isForm = opts.body instanceof FormData;
-  const r = await fetch(url, { ...opts, headers: isForm ? {} : { 'Content-Type': 'application/json' }, body: isForm || typeof opts.body === 'string' || opts.body === undefined ? opts.body : JSON.stringify(opts.body) });
+  let r;
+  try { r = await fetch(url, { ...opts, headers: isForm ? {} : { 'Content-Type': 'application/json' }, body: isForm || typeof opts.body === 'string' || opts.body === undefined ? opts.body : JSON.stringify(opts.body) }); }
+  catch { netDown(true); throw Object.assign(new Error('Sunucuya ulaşılamıyor'), { net: true }); }
+  netDown(false);
   if (r.status === 401 && !url.endsWith('/login')) { boot(); throw new Error('Oturum kapandı, tekrar giriş yap'); }
   const ct = r.headers.get('content-type') || '';
   const j = ct.includes('json') ? await r.json().catch(() => ({})) : {};
@@ -17,11 +25,11 @@ async function api(url, opts = {}) {
 const post = (u, b = {}) => api(u, { method: 'POST', body: b });
 const put = (u, b = {}) => api(u, { method: 'PUT', body: b });
 const del = (u, b) => api(u, { method: 'DELETE', body: b });
-function toast(msg, bad) { const t = document.createElement('div'); t.className = 'toast' + (bad ? ' bad' : ''); t.textContent = msg; $('toasts').append(t); setTimeout(() => t.remove(), bad ? 7000 : 3200); }
-const tryT = fn => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
+function toast(msg, bad) { if ([...$('toasts').children].some(x => x.textContent === msg)) return; const t = document.createElement('div'); t.className = 'toast' + (bad ? ' bad' : ''); t.textContent = msg; $('toasts').append(t); setTimeout(() => t.remove(), bad ? 7000 : 3200); }
+const tryT = fn => async (...a) => { try { return await fn(...a); } catch (e) { if (!e.net) toast(e.message, true); } };
 async function busyBtn(btn, fn, label = 'Çalışıyor') {
   const html = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span> ${label}`;
-  try { return await fn(); } catch (e) { toast(e.message, true); } finally { if (btn.isConnected) { btn.disabled = false; btn.innerHTML = html; } }
+  try { return await fn(); } catch (e) { if (!e.net) toast(e.message, true); } finally { if (btn.isConnected) { btn.disabled = false; btn.innerHTML = html; } }
 }
 const fmtDate = s => { if (!s) return ''; const d = new Date(/Z|T.*[+-]\d\d/.test(s) ? s : s.replace(' ', 'T') + 'Z'); return isNaN(d) ? s : d.toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }); };
 const ago = s => { if (!s) return ''; const d = new Date(/Z|T.*[+-]\d\d/.test(s) ? s : s.replace(' ', 'T') + 'Z'), m = Math.round((Date.now() - d) / 60000); return m < 1 ? 'şimdi' : m < 60 ? m + ' dk' : m < 1440 ? Math.round(m / 60) + ' sa' : Math.round(m / 1440) + ' g'; };
@@ -74,8 +82,7 @@ async function boot() {
 }
 async function loadCamps() {
   CAMPS = await api('/api/campaigns').catch(() => []);
-  $('campNav').innerHTML = CAMPS.map(c => `<a data-p="c/${c.id}"><span class="dot ${c.status === 'aktif' ? '' : 'off'}"></span><span class="t">${esc(c.name)}</span></a>`).join('')
-    || '<a data-p="newcamp" class="mut"><i>＋</i>İlk kampanyanı oluştur</a>';
+  $('bC').textContent = CAMPS.length || '';
   markNav();
 }
 async function badges() {
@@ -100,15 +107,15 @@ $('theme').onclick = () => {
 const drawer = open => { $('side').classList.toggle('open', open); $('scrim').classList.toggle('open', open); };
 $('burger').onclick = () => drawer(true); $('scrim').onclick = () => drawer(false);
 $('nav').onclick = e => { const a = e.target.closest('a[data-p]'); if (a) { location.hash = a.dataset.p; drawer(false); } };
-$('newCamp').onclick = e => { e.stopPropagation(); location.hash = 'newcamp'; drawer(false); };
 addEventListener('hashchange', () => ME && route());
 function markNav() {
-  const h = location.hash.slice(1) || 'dash';
+  let h = decodeURIComponent(location.hash.slice(1) || 'dash'); if (h.startsWith('c/')) h = 'campaigns';
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', h === a.dataset.p || h.startsWith(a.dataset.p + '/')));
 }
 let timer;
 function route() {
   clearInterval(timer); main.onclick = main.onchange = main.oninput = null;
+  closeModal();
   const [p, ...args] = (location.hash.slice(1) || 'dash').split('/');
   markNav(); window.scrollTo(0, 0);
   (PAGES[p] || PAGES.dash)(...args);
@@ -143,13 +150,30 @@ PAGES.dash = tryT(async () => {
         <div class="row" style="margin-bottom:10px">${s.sending.ok ? '<span class="pill ok">● Gönderim açık</span>' : `<span class="pill warn">${esc(s.sending.why)}</span>`}<span class="sp"></span><span class="mut">Bugün <b>${s.sending.today}/${s.sending.daily}</b></span></div>
         <div class="bar"><i style="width:${Math.min(100, s.sending.today / s.sending.daily * 100)}%"></i></div>
         <div class="row" style="margin-top:14px"><a href="#outbox/taslak" class="btn sm">Taslak <b>${s.drafts}</b></a><a href="#outbox/sırada" class="btn sm">Sırada <b>${s.queued}</b></a><a href="#queue" class="btn sm">Arka plan işi <b>${s.tasks + s.jobs}</b></a></div></div>
+      <div class="card" id="quota"><h3>RocketReach kotası</h3><p class="mut"><span class="spin"></span></p></div>
       <div class="card"><h3 style="margin-bottom:12px">Kampanyalar</h3>${CAMPS.length ? CAMPS.map(c => `<a href="#c/${c.id}" class="row" style="padding:9px 0;border-top:1px solid var(--line);color:inherit;text-decoration:none">
         <span class="sp"><b>${esc(c.name)}</b><br><small class="mut">${c.companies} firma · ${c.leads} kişi · ${c.with_email} mail · ${c.sent} gönderildi${c.replied ? ` · ${c.replied} yanıt` : ''}</small></span>${pill(c.status)}</a>`).join('') : '<p class="mut">Henüz kampanya yok. <a href="#newcamp">Oluştur →</a></p>'}</div>
     </div>
     <div class="card"><div class="card-h"><h3>Son hareketler</h3><span class="mut" style="font-size:12px">Telegram'a da gider</span></div>${feedHtml(ev.slice(0, 40))}</div>
   </div>`;
+  quotaCard();
   timer = setInterval(() => location.hash.replace('#', '') in { '': 1, dash: 1 } && PAGES.dash(), 30000);
 });
+
+const QN = { person_lookup: 'Mail bulma (lookup)', person_search: 'Kişi arama' }, QD = { one_minute: 'dakika', one_hour: 'saat', one_day: 'gün', one_month: 'ay' };
+async function quotaCard() {
+  const el = $('quota'); if (!el) return;
+  try {
+    const q = await api('/api/rr/quota');
+    const rows = q.list.filter(r => ['one_hour', 'one_day', 'one_month'].includes(r.duration));
+    el.innerHTML = `<div class="card-h"><h3>RocketReach kotası</h3><span class="mut" style="font-size:12px">canlı</span></div>
+      ${Object.keys(QN).map(a => `<p style="margin:10px 0 6px;font-weight:600">${QN[a]}</p><div class="quota">${rows.filter(r => r.action === a).map(r => {
+        const p = r.limit ? Math.min(100, r.used / r.limit * 100) : 0;
+        return `<span>${QD[r.duration]}</span><span class="${p >= 100 ? 'err' : 'mut'}">${r.used} / ${r.limit}</span><div class="bar"><i style="width:${p}%;${p >= 100 ? 'background:var(--bad)' : ''}"></i></div>`;
+      }).join('')}</div>`).join('')}
+      <p class="mut" style="font-size:12px;margin:8px 0 0">Kota RocketReach planına bağlı (API key başına). Dolduğunda kuyruk bekler, açılınca kendiliğinden devam eder. Daha yüksek limit için RocketReach planını yükseltmek gerekir.</p>`;
+  } catch (e) { el.innerHTML = '<h3>RocketReach kotası</h3><p class="mut">' + esc(e.message) + '</p>'; }
+}
 
 // ================= Şirket profili =================
 PAGES.project = tryT(async () => {
@@ -191,30 +215,68 @@ PAGES.project = tryT(async () => {
 });
 
 // ================= Kampanyalar =================
+const SECTORS = ['Otomotiv yan sanayi', 'Metal / döküm', 'Gıda üretimi', 'Tekstil', 'Plastik / kauçuk', 'Kimya', 'Beyaz eşya / elektronik', 'Mobilya', 'Ambalaj', 'İnşaat malzemesi', 'Lojistik / depo', 'Enerji', 'Tersane', 'İlaç'];
+const PLACES = ['Kocaeli', 'Bursa', 'İstanbul', 'Sakarya', 'Tekirdağ', 'Manisa', 'İzmir', 'Ankara', 'Konya', 'Kayseri', 'Gaziantep', 'Denizli', 'Trabzon', 'Eskişehir'];
 PAGES.newcamp = () => {
-  main.innerHTML = head('Yeni kampanya', 'Kime satmak istediğini kendi cümlenle yaz; AI hedeflemeyi, unvanları ve kriterleri hazırlasın.') +
-  `<div class="card" style="max-width:820px"><label>Hedef tarifi<textarea id="brief" rows="4" placeholder="ör. Kocaeli ve Bursa'daki 100+ çalışanlı otomotiv yan sanayi fabrikalarının İSG ve fabrika müdürleri. Vardiyalı çalışan, kamerası olan tesisler."></textarea></label>
-  <div class="chips" style="margin-top:10px">${['Fabrika İSG yöneticileri', 'Gıda fabrikaları üretim müdürleri', 'Lojistik depo operasyon müdürleri', 'İnşaat şantiye İSG şefleri', 'Hastane güvenlik / tesis yöneticileri', 'AVM ve perakende zincir operasyon'].map(s => `<span class="chip sug" data-b="${esc(s)}">+ ${esc(s)}</span>`).join('')}</div>
-  <div class="row" style="margin-top:16px"><button class="btn pri lg" id="mk">✨ AI ile kampanya oluştur</button><button class="btn" id="mkEmpty">Boş oluştur</button></div></div>`;
-  main.onclick = e => { const b = e.target.closest('[data-b]'); if (b) $('brief').value = b.dataset.b; };
-  $('mk').onclick = e => busyBtn(e.currentTarget, async () => {
-    const brief = $('brief').value.trim(); if (!brief) return toast('Hedef tarifini yaz', true);
-    const s = await post('/api/ai/suggest', { brief });
-    const { id } = await post('/api/campaigns', { ...s, brief, name: s.name || brief.slice(0, 40) });
-    await loadCamps(); location.hash = `c/${id}/targeting`; toast('Kampanya oluşturuldu — hedeflemeyi kontrol et');
-  }, 'AI hedefleme hazırlıyor');
-  $('mkEmpty').onclick = tryT(async () => { const { id } = await post('/api/campaigns', { name: $('brief').value.slice(0, 40) || 'Yeni kampanya', brief: $('brief').value }); await loadCamps(); location.hash = `c/${id}/targeting`; });
+  main.innerHTML = head('Firma Bul', 'Sektör ya da konum yaz (ikisi de olur, biri de yeter). AI web\'den gerçek firmaları bulur, sonra RocketReach ile yetkilileri ve maillerini çıkarır.') +
+  `<form class="card quick" id="qf"><div class="grid g2 big">
+    <label>Sektör<input name="sector" id="qS" placeholder="ör. Otomotiv yan sanayi" autocomplete="off"></label>
+    <label>Konum<input name="location" id="qL" placeholder="ör. Kocaeli, Gebze OSB" autocomplete="off"></label></div>
+    <div class="chips" style="margin-top:10px">${SECTORS.map(x => `<span class="chip sug" data-qs="${esc(x)}">${esc(x)}</span>`).join('')}</div>
+    <div class="chips" style="margin-top:8px">${PLACES.map(x => `<span class="chip sug" data-ql="${esc(x)}">📍 ${esc(x)}</span>`).join('')}</div>
+    <div class="grid g3" style="margin-top:16px"><label>Firma sayısı<select name="count">${[10, 20, 40, 60].map(n => `<option ${n === 20 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label>Büyüklük<select name="size"><option value="">Farketmez</option><option>50+ çalışan</option><option>100+ çalışan</option><option>250+ çalışan</option><option>500+ çalışan (kurumsal)</option></select></label>
+      <label>Ek not (opsiyonel)<input name="note" placeholder="ör. OSB içindekiler, ihracatçılar"></label></div>
+    <div class="row" style="margin-top:14px"><label class="inline"><input type="checkbox" name="people" checked> Firmalardaki yetkilileri de bul</label><label class="inline"><input type="checkbox" name="lookup" checked> Maillerini de çıkar</label></div>
+    <div class="row" style="margin-top:18px"><button class="btn pri lg">🔎 Firmaları bul</button><span class="mut" style="font-size:12.5px">İlk sonuçlar ~1 dk içinde gelir, gerisi arka planda devam eder.</span></div></form>`;
+  main.onclick = e => {
+    const a = e.target.closest('[data-qs]'); if (a) $('qS').value = a.dataset.qs;
+    const b = e.target.closest('[data-ql]'); if (b) $('qL').value = $('qL').value && !$('qL').value.includes(b.dataset.ql) ? $('qL').value + ', ' + b.dataset.ql : b.dataset.ql;
+  };
+  $('qf').onsubmit = e => { e.preventDefault(); busyBtn(e.target.querySelector('.btn.pri'), async () => {
+    const f = Object.fromEntries(new FormData(e.target)); f.people = !!f.people; f.lookup = !!f.lookup;
+    const { id } = await post('/api/campaigns/quick', f); await loadCamps(); location.hash = `c/${id}/companies`; toast('AI firmaları arıyor…');
+  }, 'Hazırlanıyor'); };
 };
 
-const CTABS = [['overview', 'Genel'], ['targeting', 'Hedefleme'], ['companies', 'Firmalar'], ['people', 'Kişiler'], ['emails', 'Mailler'], ['activity', 'Akış']];
-PAGES.c = tryT(async (id, tab = 'overview', sub) => {
+PAGES.campaigns = tryT(async () => {
+  await loadCamps();
+  main.innerHTML = head('Kampanyalar', 'Satıra tıkla: bulunan firmalar, kişiler, mailler.', '<a class="btn pri" href="#newcamp">＋ Yeni kampanya</a>') +
+  (CAMPS.length ? `<div class="tw"><table><thead><tr><th>Kampanya</th><th class="hide-m">Sektör</th><th class="hide-m">Konum</th><th>Firma</th><th>Kişi</th><th>Mail</th><th>Gönderilen</th><th>Yanıt</th><th>Durum</th><th class="hide-m">Oluşturma</th></tr></thead><tbody>
+  ${CAMPS.map(c => `<tr class="click" data-href="c/${c.id}/companies"><td class="w"><div class="n">${esc(c.name)}</div>${c.pending ? `<small><span class="spin"></span> ${c.pending} iş çalışıyor</small>` : ''}</td>
+    <td class="hide-m">${esc(c.sector || '—')}</td><td class="hide-m">${esc(c.location || c.geography || '—')}</td><td><b>${c.companies}</b></td><td><b>${c.leads}</b></td>
+    <td><b style="color:var(--ok)">${c.with_email}</b></td><td>${c.sent}</td><td>${c.replied}</td><td>${pill(c.status)}</td><td class="mut hide-m">${fmtDate(c.created)}</td></tr>`).join('')}</tbody></table></div>`
+  : empty('Henüz kampanya yok', '<a href="#newcamp">Firma Bul</a> ile başla: sadece sektör veya konum yazman yeter.'));
+  main.onclick = e => { const r = e.target.closest('[data-href]'); if (r) location.hash = r.dataset.href; };
+  timer = setInterval(() => location.hash === '#campaigns' && PAGES.campaigns(), 20000);
+});
+
+// Firma detayı: yetkililer + mailleri
+async function companyModal(id, campId, onChange) {
+  const co = await api('/api/companies/' + id);
+  modal(co.name, `<p class="mut" style="margin-top:0"><a href="https://${esc(co.domain)}" target="_blank" rel="noopener">${esc(co.domain)}</a> · ${esc(co.city || '')} · ${esc(co.sector || '')}${co.size ? ' · ' + esc(co.size) : ''}</p>
+    ${co.reason ? `<p style="margin-top:0">${esc(co.reason)}</p>` : ''}
+    <div class="row" style="margin-bottom:12px"><button class="btn sm" id="cmP">👥 Yetkilileri bul</button>${co.people.some(p => !p.email) ? '<button class="btn sm" id="cmL">🔎 Mailleri bul</button>' : ''}
+      ${co.people.some(p => p.email) ? '<button class="btn sm pri" id="cmD">✨ AI mail yaz</button>' : ''}<span class="sp"></span>${pill(co.status)}</div>
+    ${co.people.length ? `<div class="tw" style="max-height:50vh"><table><tbody>${co.people.map(p => `<tr><td><div class="n">${esc(p.name)}</div><small>${esc(p.title)}</small></td><td>${li(p.linkedin)}</td>
+      <td>${p.email ? `<span class="mail">${esc(p.email)}</span>` : pill(p.stage)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="mut">Henüz kişi yok. "Yetkilileri bul" ile RocketReach\'te ara.</p>'}`, b => {
+    const done = msg => { toast(msg); closeModal(); onChange?.(); };
+    b.querySelector('#cmP').onclick = tryT(async () => { const r = await post('/api/companies/people', { ids: [id], max: 5 }); done(r.queued ? 'Yetkili araması kuyruğa alındı' : 'Zaten kuyrukta'); });
+    if (b.querySelector('#cmL')) b.querySelector('#cmL').onclick = tryT(async () => { const r = await post('/api/queue/lookup', { contact_ids: co.people.filter(p => !p.email).map(p => p.id), campaign_id: campId }); done(r.queued + ' kişi mail kuyruğunda'); });
+    if (b.querySelector('#cmD')) b.querySelector('#cmD').onclick = tryT(async () => { const r = await post('/api/outbox/draft', { contact_ids: co.people.filter(p => p.email).map(p => p.id), campaign_id: campId }); done(r.queued + ' AI taslak yazılıyor → Mailler'); });
+  });
+}
+
+const CTABS = [['companies', 'Firmalar'], ['people', 'Kişiler'], ['emails', 'Mailler'], ['overview', 'Pipeline'], ['targeting', 'Ayarlar'], ['activity', 'Akış']];
+PAGES.c = tryT(async (id, tab = 'companies', sub) => {
   const c = await api('/api/campaigns/' + id);
-  main.innerHTML = `<div class="ph"><div><div class="row"><h1>${esc(c.name)}</h1>${pill(c.status)}</div><p class="sub">${esc(c.brief || c.offer || '')}</p></div>
+  main.innerHTML = `<div class="ph"><div><div class="row"><h1>${esc(c.name)}</h1>${pill(c.status)}</div><p class="sub">${esc([c.sector, c.location].filter(Boolean).join(' · ') || c.brief || '')}</p></div>
     <div class="row"><button class="btn" id="cToggle">${c.status === 'aktif' ? '❚❚ Duraklat' : '▶ Devam et'}</button><a class="btn" href="/api/campaigns/${c.id}/export">Excel</a><button class="icon" id="cDel" title="Kampanyayı sil">🗑</button></div></div>
+    <div class="kstrip"><span><b>${c.companies}</b>firma</span><span><b>${c.leads}</b>kişi</span><span><b style="color:var(--ok)">${c.with_email}</b>mail bulundu</span><span><b>${c.sent}</b>gönderildi</span><span><b>${c.replied}</b>yanıt</span>${c.pending ? `<span><span class="spin"></span> ${c.pending} iş çalışıyor</span>` : ''}</div>
     <div class="tabs" style="margin-bottom:18px">${CTABS.map(([k, l]) => `<a href="#c/${c.id}/${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'companies' ? `<span class="cnt">${c.companies}</span>` : k === 'people' ? `<span class="cnt">${c.leads}</span>` : ''}</a>`).join('')}</div><div id="ctab"></div>`;
   $('cToggle').onclick = tryT(async () => { await put('/api/campaigns/' + c.id, { status: c.status === 'aktif' ? 'duraklatıldı' : 'aktif' }); await loadCamps(); route(); });
   $('cDel').onclick = tryT(async () => { if (!confirm(`"${c.name}" kampanyası silinsin mi? (Kişiler Kişilerim'de kalır)`)) return; await del('/api/campaigns/' + c.id); await loadCamps(); location.hash = 'dash'; });
-  await (CTAB[tab] || CTAB.overview)(c, $('ctab'), sub);
+  await (CTAB[tab] || CTAB.companies)(c, $('ctab'), sub);
 });
 const CTAB = {};
 
@@ -316,21 +378,22 @@ CTAB.companies = async (c, el) => {
   const draw = async () => {
     const cos = await api(`/api/campaigns/${c.id}/companies`);
     const pending = cos.some(x => ['kuyrukta', 'kişi aranıyor'].includes(x.status));
-    el.innerHTML = `<div class="card"><div class="row"><label style="flex:1;min-width:200px">AI ile web'den firma bul<select id="fcCount">${[10, 20, 30, 40].map(n => `<option value="${n}" ${n === 20 ? 'selected' : ''}>${n} firma</option>`).join('')}</select></label>
-      <label class="inline" style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="fcPeople"> kişileri de bul</label>
+    el.innerHTML = `<div class="card"><div class="row"><label style="flex:1;min-width:200px">Daha fazla firma bul<select id="fcCount">${[10, 20, 30, 40].map(n => `<option value="${n}" ${n === 20 ? 'selected' : ''}>${n} firma</option>`).join('')}</select></label>
+      <label class="inline" style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="fcPeople" checked> kişileri de bul</label>
       <button class="btn pri" id="fcGo" style="align-self:flex-end">✨ Firma bul</button><button class="btn" id="fcManual" style="align-self:flex-end">＋ Elle ekle</button></div>
       <p class="mut" style="font-size:12px;margin:8px 0 0">AI hedeflemedeki kriterlere göre web'de gerçek firmaları arar, daha önce bulunanları tekrar getirmez. Bir tur ~1 dk.</p></div>
-    ${cos.length ? `<div class="tw"><table><thead><tr><th class="c"><input type="checkbox" id="fAll"></th><th>Firma</th><th class="hide-m">Şehir</th><th class="hide-m">Sektör</th><th>Skor</th><th class="hide-m">Neden uygun</th><th>Kişi</th><th>Durum</th></tr></thead><tbody>
-    ${cos.map(x => `<tr><td class="c"><input type="checkbox" data-co="${x.id}"></td><td class="w"><div class="n">${esc(x.name)}</div><small><a href="https://${esc(x.domain)}" target="_blank" rel="noopener">${esc(x.domain)}</a>${x.size ? ' · ' + esc(x.size) : ''}</small></td>
+    ${cos.length ? `<div class="tw"><table><thead><tr><th class="c"><input type="checkbox" id="fAll"></th><th>Firma</th><th class="hide-m">Şehir</th><th class="hide-m">Sektör</th><th>Skor</th><th class="hide-m">Neden uygun</th><th>Kişi</th><th>Mail</th><th>Durum</th></tr></thead><tbody>
+    ${cos.map(x => `<tr class="click" data-cm="${x.id}"><td class="c"><input type="checkbox" data-co="${x.id}"></td><td class="w"><div class="n">${esc(x.name)}</div><small><a href="https://${esc(x.domain)}" target="_blank" rel="noopener">${esc(x.domain)}</a>${x.size ? ' · ' + esc(x.size) : ''}</small></td>
       <td class="hide-m">${esc(x.city)}</td><td class="hide-m">${esc(x.sector)}</td><td>${x.score ? `<b>${x.score}</b>/10` : ''}</td><td class="hide-m" style="max-width:340px"><small>${esc(x.reason)}</small></td>
-      <td>${x.people ? `<a href="#c/${c.id}/people">${x.people}</a>` : '—'}</td><td>${pill(x.status)}</td></tr>`).join('')}</tbody></table></div>
+      <td>${x.people || '—'}</td><td>${x.mails ? `<b style="color:var(--ok)">${x.mails}</b>` : '—'}</td><td>${pill(x.status)}</td></tr>`).join('')}</tbody></table></div>
     <div class="selbar"><b id="fN">0 seçili</b><span class="sp"></span><select id="fMax"><option value="3">firma başı 3 kişi</option><option value="5" selected>5 kişi</option><option value="10">10 kişi</option></select>
       <button class="btn" id="fPeople">👥 Kişileri bul</button><button class="btn" id="fDel">Sil</button></div>`
-    : empty('Henüz firma yok', '"Firma bul" ile AI web\'den aday firmaları getirsin.')}`;
+    : empty(c.pending ? '<span class="spin"></span> AI firmaları arıyor…' : 'Henüz firma yok', c.pending ? 'Web araması ~1 dk sürer, liste kendiliğinden dolacak.' : '"Firma bul" ile AI web\'den aday firmaları getirsin.')}`;
     const ids = () => [...el.querySelectorAll('[data-co]:checked')].map(x => +x.dataset.co);
     const upd = () => { if ($('fN')) $('fN').textContent = ids().length ? ids().length + ' firma seçili' : 'Firma seç (veya tümü)'; };
     upd();
     el.onchange = e => { if (e.target.id === 'fAll') el.querySelectorAll('[data-co]').forEach(x => x.checked = e.target.checked); upd(); };
+    el.onclick = e => { const r = e.target.closest('[data-cm]'); if (r && !e.target.closest('input,a,button,label')) companyModal(+r.dataset.cm, c.id, draw); };
     $('fcGo').onclick = ev => busyBtn(ev.currentTarget, async () => { await post(`/api/campaigns/${c.id}/find-companies`, { count: +$('fcCount').value, people: $('fcPeople').checked }); toast('AI firma araması başladı, liste birazdan dolacak'); }, 'Kuyruğa');
     $('fcManual').onclick = () => modal('Elle firma ekle', `<p class="mut" style="margin-top:0">Her satıra bir firma: <code>Firma Adı, alanadi.com</code></p><textarea id="mText" rows="8" placeholder="Farplas Otomotiv, farplas.com&#10;EKU Fren, eku.com.tr"></textarea><div class="row" style="margin-top:12px"><span class="sp"></span><button class="btn pri" id="mGo">Ekle</button></div>`,
       b => b.querySelector('#mGo').onclick = tryT(async () => { const r = await post(`/api/campaigns/${c.id}/companies`, { text: b.querySelector('#mText').value }); closeModal(); toast(r.added + ' firma eklendi'); draw(); }));
@@ -343,7 +406,7 @@ CTAB.companies = async (c, el) => {
       $('fDel').onclick = tryT(async () => { if (!ids().length || !confirm(ids().length + ' firma silinsin mi?')) return; await del('/api/companies', { ids: ids() }); draw(); });
     }
     clearInterval(timer);
-    timer = setInterval(() => { if (location.hash === `#c/${c.id}/companies` && !el.querySelector('[data-co]:checked')) draw(); }, pending ? 8000 : 25000);
+    timer = setInterval(() => { if ([`#c/${c.id}/companies`, `#c/${c.id}`].includes(location.hash) && !el.querySelector('[data-co]:checked') && $('modal').classList.contains('hide')) draw(); }, pending || !cos.length ? 8000 : 20000);
   };
   await draw();
 };

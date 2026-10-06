@@ -124,7 +124,7 @@ app.post('/api/project/research', auth, wrap(async (req, res) => {
 }));
 
 // ---------------- Campaigns ----------------
-const CAMP_FIELDS = ['name', 'status', 'brief', 'offer', 'problem', 'clients', 'positive', 'negative', 'keywords', 'geography', 'size', 'roles', 'titles', 'instructions', 'followups', 'auto_lookup', 'auto_draft', 'auto_send'];
+const CAMP_FIELDS = ['sector', 'location', 'name', 'status', 'brief', 'offer', 'problem', 'clients', 'positive', 'negative', 'keywords', 'geography', 'size', 'roles', 'titles', 'instructions', 'followups', 'auto_lookup', 'auto_draft', 'auto_send'];
 const campStats = `(SELECT count(*) FROM companies WHERE campaign_id=c.id) AS companies, (SELECT count(*) FROM leads WHERE campaign_id=c.id) AS leads,
   (SELECT count(*) FROM leads l JOIN contacts k ON k.id=l.contact_id WHERE l.campaign_id=c.id AND k.email<>'') AS with_email,
   (SELECT count(*) FROM outbox WHERE campaign_id=c.id AND status='gönderildi') AS sent,
@@ -152,6 +152,28 @@ app.delete('/api/campaigns/:id', auth, (req, res) => {
   run("DELETE FROM tasks WHERE campaign_id=? AND status IN ('sırada','hata')", id); run("UPDATE outbox SET status='iptal' WHERE campaign_id=? AND status IN ('sırada','taslak')", id);
   res.json({ ok: true });
 });
+// Hızlı kampanya: sektör ve/veya konum yeter; AI hedeflemeyi doldurur, firma aramasını hemen başlatır
+app.post('/api/campaigns/quick', auth, wrap(async (req, res) => {
+  const { sector = '', location = '', size = '', note = '', count = 20, people = true, lookup = true } = req.body;
+  if (!sector.trim() && !location.trim()) throw Object.assign(new Error('Sektör veya konumdan en az birini yaz'), { status: 400 });
+  const brief = [sector ? sector + ' sektöründeki' : 'Üretim yapan', 'firmalar / fabrikalar', location ? '(' + location + ')' : '', size ? '— ' + size : '', note].filter(Boolean).join(' ');
+  let s = {};
+  try { s = await ai.suggestCampaign(brief); } catch (e) { console.error('suggest', e.message); }
+  const name = [sector || 'Fabrikalar', location].filter(Boolean).join(' · ');
+  const v = campVals({ ...s, name, brief, sector, location, geography: location || 'Türkiye', size: size || s.size || '', auto_lookup: lookup ? 1 : 0 });
+  const id = Number(run(`INSERT INTO campaigns(${v.map(x => x[0]).join(',')},user_id) VALUES(${v.map(() => '?').join(',')},?)`, ...v.map(x => x[1]), req.user.id).lastInsertRowid);
+  const n = Math.min(60, Math.max(5, +count || 20));
+  for (let left = n, i = 0; left > 0; left -= 20, i++) worker.enqueue('ai_companies', { count: Math.min(20, left), people: !!people, n: Date.now() + i }, id, req.user.id);
+  worker.loop();
+  event('info', `Yeni kampanya: ${name} — AI ${n} firma arıyor`, id);
+  res.json({ id });
+}));
+app.get('/api/companies/:id', auth, (req, res) => {
+  const co = get('SELECT * FROM companies WHERE id=?', +req.params.id); if (!co) return res.status(404).json({ error: 'Firma yok' });
+  co.people = all('SELECT l.stage, c.* FROM leads l JOIN contacts c ON c.id=l.contact_id WHERE l.company_id=? ORDER BY c.email DESC', co.id);
+  res.json(co);
+});
+app.get('/api/rr/quota', auth, wrap(async (req, res) => res.json({ list: await rr.quotas(req.query.force), limits: { lookup: Math.ceil(rr.remaining('lookup') / 60), arama: Math.ceil(rr.remaining('arama') / 60) } })));
 app.post('/api/ai/suggest', auth, wrap(async (req, res) => res.json(await ai.suggestCampaign(req.body.brief || ''))));
 
 app.post('/api/campaigns/:id/find-companies', auth, (req, res) => {
@@ -160,7 +182,8 @@ app.post('/api/campaigns/:id/find-companies', auth, (req, res) => {
   for (let left = count, i = 0; left > 0; left -= 20, i++) worker.enqueue('ai_companies', { count: Math.min(20, left), people: !!req.body.people, n: Date.now() + i }, id, req.user.id);
   worker.loop(); res.json({ ok: true });
 });
-app.get('/api/campaigns/:id/companies', auth, (req, res) => res.json(all('SELECT * FROM companies WHERE campaign_id=? ORDER BY score DESC, id DESC', +req.params.id)));
+app.get('/api/campaigns/:id/companies', auth, (req, res) => res.json(all(`SELECT co.*, (SELECT count(*) FROM leads l JOIN contacts c ON c.id=l.contact_id WHERE l.company_id=co.id AND c.email<>'') AS mails
+  FROM companies co WHERE co.campaign_id=? ORDER BY co.score DESC, co.id DESC`, +req.params.id)));
 app.post('/api/campaigns/:id/companies', auth, (req, res) => { // elle firma ekle (satır satır "Ad, domain")
   let n = 0;
   for (const line of String(req.body.text || '').split(/\n/)) {

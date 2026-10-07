@@ -102,7 +102,7 @@ $('lf').onsubmit = async e => {
 };
 $('out').onclick = async () => { await post('/api/logout'); boot(); };
 $('theme').onclick = () => {
-  const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const cur = document.documentElement.dataset.theme || 'light';
   const next = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; try { localStorage.setItem('theme', next); } catch {}
 };
 const drawer = open => { $('side').classList.toggle('open', open); $('scrim').classList.toggle('open', open); };

@@ -976,7 +976,7 @@ async function renderDomain(el, domain) {
         ${c.ok ? '' : `<div style="margin-top:6px;font-size:12.5px;color:var(--txt2)">${esc(c.fix)}</div>`}</span></div>`).join('')}</div>
       <div class="row" style="margin-top:12px"><input id="dhD" placeholder="başka alan adı" style="max-width:220px"><button class="btn sm" id="dhGo">Kontrol et</button></div>`;
     $('dhGo').onclick = () => renderDomain(el, $('dhD').value);
-  } catch (e) { el.innerHTML = '<h3>Alan adı sağlığı</h3><p class="mut">Kontrol için alan adı gir (gönderen hesap eklenince otomatik yapılır).</p><div class="row"><input id="dhD" placeholder="hypevisionlab.com" style="max-width:220px"><button class="btn sm" id="dhGo">Kontrol et</button></div>'; .onclick = () => renderDomain(el, .value); }
+  } catch (e) { el.innerHTML = '<h3>Alan adı sağlığı</h3><p class="mut">Kontrol için alan adı gir (gönderen hesap eklenince otomatik yapılır).</p><div class="row"><input id="dhD" placeholder="hypevisionlab.com" style="max-width:220px"><button class="btn sm" id="dhGo">Kontrol et</button></div>'; $('dhGo').onclick = () => renderDomain(el, $('dhD').value); }
 }
 
 // ================= Yanıtlar =================

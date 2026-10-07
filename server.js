@@ -87,14 +87,14 @@ const mask = k => k ? k.slice(0, 5) + '•••' + k.slice(-4) : '';
 app.get('/api/settings', auth, (req, res) => res.json({
   rr_key: mask(setting('rr_api_key')), openai_key: mask(setting('openai_key')), openai_model: setting('openai_model') || 'gpt-4.1-mini',
   gmail_user: setting('gmail_user'), gmail_pass: setting('gmail_pass') ? '••••••••' : '', from_name: setting('from_name'),
-  tg_token: mask(setting('tg_token')), tg_chat: setting('tg_chat'), tg_mute: setting('tg_mute'),
+  tg_token: mask(setting('tg_token')), tg_chat: setting('tg_chat'), tg_mute: setting('tg_mute'), always_cc: setting('always_cc'),
   schedule: mailer.schedule(), sending_paused: setting('sending_paused') === '1',
 }));
 app.put('/api/settings', auth, admin, (req, res) => {
   const b = req.body;
   for (const [k, key] of [['rr_key', 'rr_api_key'], ['openai_key', 'openai_key'], ['tg_token', 'tg_token'], ['gmail_pass', 'gmail_pass']])
     if (b[k]) setSetting(key, k === 'gmail_pass' ? b[k].replace(/\s+/g, '') : b[k].trim());
-  for (const k of ['openai_model', 'gmail_user', 'from_name', 'tg_chat', 'tg_mute']) if (b[k] !== undefined) setSetting(k, String(b[k]).trim());
+  for (const k of ['openai_model', 'gmail_user', 'from_name', 'tg_chat', 'tg_mute', 'always_cc']) if (b[k] !== undefined) setSetting(k, String(b[k]).trim());
   if (b.gmail_user !== undefined || b.gmail_pass) { setSetting('sending_paused', '0'); syncLegacySender(); }
   if (b.sending_paused !== undefined) setSetting('sending_paused', b.sending_paused ? '1' : '0');
   if (b.schedule) {

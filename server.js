@@ -159,16 +159,17 @@ app.delete('/api/campaigns/:id', auth, (req, res) => {
 });
 // Hızlı kampanya: sektör ve/veya konum yeter; AI hedeflemeyi doldurur, firma aramasını hemen başlatır
 app.post('/api/campaigns/quick', auth, wrap(async (req, res) => {
-  let { sector = '', location = '', country = 'Türkiye', size = '', note = '', count = 20, people = true, lookup = true } = req.body;
+  let { sector = '', location = '', country = 'Türkiye', size = '', note = '', count = 20, people = true, lookup = true, titles = '' } = req.body;
   if (country && country !== 'Türkiye') location = [location, country].filter(Boolean).join(', ');
   if (!sector.trim() && !location.trim()) throw Object.assign(new Error('Sektör veya konumdan en az birini yaz'), { status: 400 });
   const brief = [sector ? sector + ' sektöründeki' : 'Üretim yapan', 'firmalar / fabrikalar', location ? '(' + location + ')' : '', size ? '— ' + size : '', note].filter(Boolean).join(' ');
   let s = {};
   try { s = await ai.suggestCampaign(brief); } catch (e) { console.error('suggest', e.message); }
   const name = [sector || 'Fabrikalar', location].filter(Boolean).join(' · ');
+  if (titles) s.titles = String(titles).split(',').map(x => x.trim()).filter(Boolean).concat(s.titles || []);
   const v = campVals({ ...s, name, brief, sector, location, geography: location || country || 'Türkiye', size: size || s.size || '', auto_lookup: lookup ? 1 : 0 });
   const id = Number(run(`INSERT INTO campaigns(${v.map(x => x[0]).join(',')},user_id) VALUES(${v.map(() => '?').join(',')},?)`, ...v.map(x => x[1]), req.user.id).lastInsertRowid);
-  const n = Math.min(60, Math.max(5, +count || 20));
+  const n = Math.min(200, Math.max(5, +count || 20));
   for (let left = n, i = 0; left > 0; left -= 20, i++) worker.enqueue('ai_companies', { count: Math.min(20, left), people: !!people, n: Date.now() + i }, id, req.user.id);
   worker.loop();
   event('info', `Yeni kampanya: ${name} — AI ${n} firma arıyor`, id);
@@ -199,15 +200,33 @@ app.get('/api/companies/:id', auth, (req, res) => {
   res.json(co);
 });
 app.get('/api/rr/quota', auth, wrap(async (req, res) => res.json({ list: await rr.quotas(req.query.force), limits: { lookup: Math.ceil(rr.remaining('lookup') / 60), arama: Math.ceil(rr.remaining('arama') / 60) } })));
+// AI kampanya önerileri: şirket profiline + mevcut kampanyalara bakıp yeni hedef pazarlar önerir (günlük önbellek)
+app.get('/api/ai/ideas', auth, wrap(async (req, res) => {
+  const cache = jsonSetting('ideas_cache', {});
+  if (!req.query.fresh && cache.t && Date.now() - cache.t < 864e5 && cache.list?.length) return res.json(cache.list);
+  const p = ai.project(), done = all('SELECT name, sector, location FROM campaigns').map(c => [c.sector, c.location, c.name].filter(Boolean).join(' / '));
+  const r = await ai.ask(`Sen B2B büyüme stratejistisin. Aşağıdaki şirket için soğuk mail kampanyası önerileri üret.
+Şirket: ${p.company || ''} — ${p.description || ''}
+Teklif: ${p.offer || ''}
+Yetenekler: ${String(p.capabilities || '').slice(0, 800)}
+Mevcut kampanyalar (tekrar etme): ${done.join('; ') || '-'}
+8 öneri ver: yarısı Türkiye'de farklı sanayi bölgeleri/sektörler, yarısı yurt dışı (ülke ülke, Türkiye'ye yakın ve üretim yoğun pazarlar).
+Her biri farklı bir sektör+bölge kombinasyonu olsun; neden şimdi mantıklı olduğunu somut yaz (mevzuat, yoğunluk, kaza riski, ihracat vb.).
+Sadece JSON: {"ideas":[{"name":"kısa ad","sector":"","location":"şehir/bölge (boş olabilir)","country":"Türkiye veya ülke adı (Türkçe)","why":"1 cümle","titles":"aranacak 3-4 unvan, virgülle","modules":"öne çıkacak 2-3 modül"}]}`);
+  const list = (r.ideas || []).filter(x => x.sector);
+  setSetting('ideas_cache', JSON.stringify({ t: Date.now(), list }));
+  res.json(list);
+}));
 app.post('/api/ai/suggest', auth, wrap(async (req, res) => res.json(await ai.suggestCampaign(req.body.brief || ''))));
 
 app.post('/api/campaigns/:id/find-companies', auth, (req, res) => {
-  const id = +req.params.id, count = Math.min(40, Math.max(5, +req.body.count || 20));
+  const id = +req.params.id, count = Math.min(200, Math.max(5, +req.body.count || 20));
   // Büyük istekleri 20'lik parçalara böl (AI kalitesi için)
   for (let left = count, i = 0; left > 0; left -= 20, i++) worker.enqueue('ai_companies', { count: Math.min(20, left), people: !!req.body.people, n: Date.now() + i }, id, req.user.id);
   worker.loop(); res.json({ ok: true });
 });
-app.get('/api/campaigns/:id/companies', auth, (req, res) => res.json(all(`SELECT co.*, (SELECT count(*) FROM leads l JOIN contacts c ON c.id=l.contact_id WHERE l.company_id=co.id AND c.email<>'') AS mails
+app.get('/api/campaigns/:id/companies', auth, (req, res) => res.json(all(`SELECT co.*, (SELECT count(*) FROM leads l JOIN contacts c ON c.id=l.contact_id WHERE l.company_id=co.id AND c.email<>'') AS mails,
+  (SELECT json_object('id',c.id,'name',c.name,'title',c.title,'email',c.email,'linkedin',c.linkedin,'stage',l.stage) FROM leads l JOIN contacts c ON c.id=l.contact_id WHERE l.company_id=co.id ORDER BY (c.email<>'') DESC LIMIT 1) AS person
   FROM companies co WHERE co.campaign_id=? ORDER BY co.score DESC, co.id DESC`, +req.params.id)));
 app.post('/api/campaigns/:id/companies', auth, (req, res) => { // elle firma ekle (satır satır "Ad, domain")
   let n = 0;
@@ -224,7 +243,7 @@ app.post('/api/companies/people', auth, (req, res) => {
   let n = 0;
   for (const id of req.body.ids || []) {
     const co = get('SELECT * FROM companies WHERE id=?', +id); if (!co) continue;
-    n += worker.enqueue('company_people', { company_id: co.id, max: Math.min(10, +req.body.max || 5) }, co.campaign_id, req.user.id) ? 1 : 0;
+    n += worker.enqueue('company_people', { company_id: co.id, ...(req.body.more ? { more: 1 } : {}) }, co.campaign_id, req.user.id) ? 1 : 0;
     run("UPDATE companies SET status='kuyrukta' WHERE id=? AND status IN ('yeni','kişi yok')", co.id);
   }
   worker.loop(); res.json({ queued: n });
@@ -598,7 +617,8 @@ app.get('/api/events', auth, (req, res) => {
 });
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Bulunamadı' }));
-app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+// Kod dosyaları her açılışta doğrulansın (güncelleme sonrası eski sürüm takılı kalmasın); görseller 7 gün önbellekte
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res, p) => res.setHeader('Cache-Control', /\.(html|js|css|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=604800') }));
 app.listen(PORT, () => {
   console.log(`Lead-AI: http://localhost:${PORT}`);
   worker.start(); mailer.start();

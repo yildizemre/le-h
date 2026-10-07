@@ -129,39 +129,6 @@ const PAGES = {};
 // ================= Panel =================
 const EVI = { found: '🔎', sent: '📤', reply: '💬', job: '✅', limit: '⏳', error: '⚠️', info: 'ℹ️', company: '🏭' };
 const feedHtml = ev => ev.length ? `<div class="feed">${ev.map(e => `<div><span class="ic">${EVI[e.type] || '•'}</span><span class="tx">${esc(e.text)}${e.campaign ? ` <small class="mut">· ${esc(e.campaign)}</small>` : ''}</span><time>${ago(e.created)}</time></div>`).join('')}</div>` : '<p class="mut">Henüz hareket yok</p>';
-PAGES.dash = tryT(async () => {
-  const [s, ev] = await Promise.all([api('/api/stats'), api('/api/events')]);
-  const steps = [
-    [s.setup.project, 'Şirket profilini doldur', 'project'], [s.setup.openai, 'OpenAI API key', 'settings'], [s.setup.rr, 'RocketReach API key', 'settings'],
-    [s.setup.gmail, 'Gmail bağla ve test et', 'settings'], [s.setup.telegram, 'Telegram bildirimlerini bağla', 'settings'], [CAMPS.length > 0, 'İlk kampanyayı oluştur', 'newcamp'],
-  ];
-  const done = steps.filter(x => x[0]).length;
-  main.innerHTML = head(`Merhaba ${esc(ME.name)} 👋`, 'Firma bul → yetkiliyi çıkar → mailini bul → şablon seç → Gmail\'i yakmadan gönder', `<a class="btn pri" href="#newcamp">＋ Yeni kampanya</a>`) +
-  `${Math.max(s.limits.lookup, s.limits.arama) ? `<div class="banner">⏳ RocketReach saatlik limit: lookup ${s.limits.lookup ? s.limits.lookup + ' dk' : 'açık'} · arama ${s.limits.arama ? s.limits.arama + ' dk' : 'açık'} — kuyruk kendiliğinden devam edecek.</div>` : ''}
-  <div class="grid g5 kpis" style="margin-bottom:16px">
-    <div class="card kpi"><b>${s.companies}</b><span>Hedef firma</span></div>
-    <div class="card kpi"><b>${s.contacts}</b><span>Kişi</span></div>
-    <div class="card kpi"><b style="color:var(--ok)">${s.withEmail}</b><span>Maili bulunan</span></div>
-    <div class="card kpi"><b style="color:var(--pri)">${s.sent}</b><span>Gönderilen mail</span></div>
-    <div class="card kpi"><b style="color:#f59e0b">${s.replied}</b><span>Yanıt</span></div>
-  </div>
-  <div class="grid g2" style="align-items:start">
-    <div>
-      ${done < steps.length ? `<div class="card"><div class="card-h"><h3>Kurulum</h3><span class="pill pri">${done}/${steps.length}</span></div><div class="steps">${steps.map(([ok, t, h]) => `<a class="step ${ok ? 'done' : ''}" href="#${h}" style="color:inherit;text-decoration:none"><span class="ck">${ok ? '✓' : ''}</span><span>${t}</span>${ok ? '' : '<span class="mut">→</span>'}</a>`).join('')}</div></div>` : ''}
-      <div class="card"><div class="card-h"><h3>Gönderim durumu</h3><a href="#schedule" class="btn sm">Takvim</a></div>
-        <div class="row" style="margin-bottom:10px">${s.sending.ok ? '<span class="pill ok">● Gönderim açık</span>' : `<span class="pill warn">${esc(s.sending.why)}</span>`}<span class="sp"></span><span class="mut">Bugün <b>${s.sending.today}/${s.sending.daily}</b></span></div>
-        <div class="bar"><i style="width:${Math.min(100, s.sending.today / s.sending.daily * 100)}%"></i></div>
-        <div class="row" style="margin-top:14px"><a href="#outbox/taslak" class="btn sm">Taslak <b>${s.drafts}</b></a><a href="#outbox/sırada" class="btn sm">Sırada <b>${s.queued}</b></a><a href="#queue" class="btn sm">Arka plan işi <b>${s.tasks + s.jobs}</b></a></div></div>
-      <div class="card" id="quota"><h3>RocketReach kotası</h3><p class="mut"><span class="spin"></span></p></div>
-      <div class="card"><h3 style="margin-bottom:12px">Kampanyalar</h3>${CAMPS.length ? CAMPS.map(c => `<a href="#c/${c.id}" class="row" style="padding:9px 0;border-top:1px solid var(--line);color:inherit;text-decoration:none">
-        <span class="sp"><b>${esc(c.name)}</b><br><small class="mut">${c.companies} firma · ${c.leads} kişi · ${c.with_email} mail · ${c.sent} gönderildi${c.replied ? ` · ${c.replied} yanıt` : ''}</small></span>${pill(c.status)}</a>`).join('') : '<p class="mut">Henüz kampanya yok. <a href="#newcamp">Oluştur →</a></p>'}</div>
-    </div>
-    <div class="card"><div class="card-h"><h3>Son hareketler</h3><span class="mut" style="font-size:12px">Telegram'a da gider</span></div>${feedHtml(ev.slice(0, 40))}</div>
-  </div>`;
-  quotaCard();
-  timer = setInterval(() => location.hash.replace('#', '') in { '': 1, dash: 1 } && PAGES.dash(), 30000);
-});
-
 const QN = { person_lookup: 'Mail bulma (lookup)', person_search: 'Kişi arama' }, QD = { one_minute: 'dakika', one_hour: 'saat', one_day: 'gün', one_month: 'ay' };
 async function quotaCard() {
   const el = $('quota'); if (!el) return;
@@ -220,38 +187,6 @@ PAGES.project = tryT(async () => {
 const COUNTRIES = ['Türkiye', 'Almanya', 'Avusturya', 'İsviçre', 'Hollanda', 'Belçika', 'Fransa', 'İtalya', 'İspanya', 'Polonya', 'Çekya', 'Romanya', 'Bulgaristan', 'Macaristan', 'İngiltere', 'İrlanda', 'İsveç', 'Danimarka', 'Norveç', 'ABD', 'Kanada', 'Meksika', 'Brezilya', 'BAE', 'Suudi Arabistan', 'Katar', 'Mısır', 'Fas', 'Azerbaycan', 'Kazakistan', 'Özbekistan', 'Gürcistan', 'Irak', 'Hindistan', 'Endonezya', 'Malezya', 'Güney Afrika'];
 const SECTORS = ['Otomotiv yan sanayi', 'Metal / döküm', 'Gıda üretimi', 'Tekstil', 'Plastik / kauçuk', 'Kimya', 'Beyaz eşya / elektronik', 'Mobilya', 'Ambalaj', 'İnşaat malzemesi', 'Lojistik / depo', 'Enerji', 'Tersane', 'İlaç'];
 const PLACES = ['Kocaeli', 'Bursa', 'İstanbul', 'Sakarya', 'Tekirdağ', 'Manisa', 'İzmir', 'Ankara', 'Konya', 'Kayseri', 'Gaziantep', 'Denizli', 'Trabzon', 'Eskişehir'];
-PAGES.newcamp = () => {
-  main.innerHTML = head('Firma Bul', 'Sektör ya da konum yaz (ikisi de olur, biri de yeter). AI web\'den gerçek firmaları bulur, sonra RocketReach ile yetkilileri ve maillerini çıkarır.') +
-  `<form class="card quick" id="qf"><div class="grid g2 big">
-    <label>Sektör<input name="sector" id="qS" placeholder="ör. Otomotiv yan sanayi" autocomplete="off"></label>
-    <label>Şehir / bölge<input name="location" id="qL" placeholder="ör. Kocaeli, Gebze OSB · Stuttgart · Ontario" autocomplete="off"></label></div>
-    <div class="grid g2" style="margin-top:12px"><label>Ülke<select name="country" id="qC">${COUNTRIES.map(c => `<option>${c}</option>`).join('')}</select></label><div></div></div>
-    <div class="chips" style="margin-top:10px">${SECTORS.map(x => `<span class="chip sug" data-qs="${esc(x)}">${esc(x)}</span>`).join('')}</div>
-    <div class="chips" style="margin-top:8px">${PLACES.map(x => `<span class="chip sug" data-ql="${esc(x)}">📍 ${esc(x)}</span>`).join('')}</div>
-    <div class="grid g3" style="margin-top:16px"><label>Firma sayısı<select name="count">${[10, 20, 40, 60].map(n => `<option ${n === 20 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      <label>Büyüklük<select name="size"><option value="">Farketmez</option><option>50+ çalışan</option><option>100+ çalışan</option><option>250+ çalışan</option><option>500+ çalışan (kurumsal)</option></select></label>
-      <label>Ek not (opsiyonel)<input name="note" placeholder="ör. OSB içindekiler, ihracatçılar"></label></div>
-    <div class="row" style="margin-top:14px"><label class="inline"><input type="checkbox" name="people" checked> Firmalardaki yetkilileri de bul</label><label class="inline"><input type="checkbox" name="lookup" checked> Maillerini de çıkar</label></div>
-    <div class="row" style="margin-top:18px"><button class="btn pri lg">🔎 Firmaları bul</button><span class="mut" style="font-size:12.5px">İlk sonuçlar ~1 dk içinde gelir, gerisi arka planda devam eder.</span></div></form>
-  <form class="card quick" id="lf2"><h3>…ya da firma listesini sen ver</h3><p class="hint">Her satıra bir firma: <code>Firma adı, alanadi.com</code> (alan adı varsa daha isabetli). Her firmada yetkililer aranır ve mailleri çıkarılır.</p>
-    <textarea name="text" rows="6" placeholder="Farplas Otomotiv, farplas.com&#10;Assan Hanil, assanhanil.com.tr&#10;Bosch Bursa, bosch.com.tr"></textarea>
-    <div class="grid g2" style="margin-top:12px"><label>Kampanya adı<input name="name" placeholder="ör. Bursa otomotiv listem"></label><label>Aranacak unvanlar (virgülle, boş = varsayılan)<input name="titles" placeholder="İSG Müdürü, Fabrika Müdürü, Plant Manager"></label></div>
-    <div class="row" style="margin-top:14px"><label class="inline"><input type="checkbox" name="lookup" checked> Maillerini de çıkar</label><span class="sp"></span><button class="btn pri">👥 Yetkilileri bul</button></div></form>`;
-  main.onclick = e => {
-    const a = e.target.closest('[data-qs]'); if (a) $('qS').value = a.dataset.qs;
-    const b = e.target.closest('[data-ql]'); if (b) $('qL').value = $('qL').value && !$('qL').value.includes(b.dataset.ql) ? $('qL').value + ', ' + b.dataset.ql : b.dataset.ql;
-  };
-  $('lf2').onsubmit = e => { e.preventDefault(); busyBtn(e.target.querySelector('.btn.pri'), async () => {
-    const f = Object.fromEntries(new FormData(e.target)); f.lookup = !!f.lookup;
-    const { id } = await post('/api/campaigns/from-list', f); await loadCamps(); location.hash = `c/${id}/companies`; toast('Yetkililer aranıyor…');
-  }, 'Hazırlanıyor'); };
-  $('qC').onchange = e => { if (e.target.value !== 'Türkiye') $('qL').placeholder = 'şehir/eyalet (opsiyonel)'; };
-  $('qf').onsubmit = e => { e.preventDefault(); busyBtn(e.target.querySelector('.btn.pri'), async () => {
-    const f = Object.fromEntries(new FormData(e.target)); f.people = !!f.people; f.lookup = !!f.lookup;
-    const { id } = await post('/api/campaigns/quick', f); await loadCamps(); location.hash = `c/${id}/companies`; toast('AI firmaları arıyor…');
-  }, 'Hazırlanıyor'); };
-};
-
 PAGES.campaigns = tryT(async () => {
   await loadCamps();
   main.innerHTML = head('Kampanyalar', 'Satıra tıkla: bulunan firmalar, kişiler, mailler.', '<a class="btn pri" href="#newcamp">＋ Yeni kampanya</a>') +
@@ -387,43 +322,6 @@ CTAB.targeting = async (c, el) => {
   }, 'AI yazıyor');
 };
 
-CTAB.companies = async (c, el) => {
-  const draw = async () => {
-    const cos = await api(`/api/campaigns/${c.id}/companies`);
-    const pending = cos.some(x => ['kuyrukta', 'kişi aranıyor'].includes(x.status));
-    el.innerHTML = `<div class="card"><div class="row"><label style="flex:1;min-width:200px">Daha fazla firma bul<select id="fcCount">${[10, 20, 30, 40].map(n => `<option value="${n}" ${n === 20 ? 'selected' : ''}>${n} firma</option>`).join('')}</select></label>
-      <label class="inline" style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="fcPeople" checked> kişileri de bul</label>
-      <button class="btn pri" id="fcGo" style="align-self:flex-end">✨ Firma bul</button><button class="btn" id="fcManual" style="align-self:flex-end">＋ Elle ekle</button></div>
-      <p class="mut" style="font-size:12px;margin:8px 0 0">AI hedeflemedeki kriterlere göre web'de gerçek firmaları arar, daha önce bulunanları tekrar getirmez. Bir tur ~1 dk.</p></div>
-    ${cos.length ? `<div class="tw"><table><thead><tr><th class="c"><input type="checkbox" id="fAll"></th><th>Firma</th><th class="hide-m">Şehir</th><th class="hide-m">Sektör</th><th>Skor</th><th class="hide-m">Neden uygun</th><th>Kişi</th><th>Mail</th><th>Durum</th></tr></thead><tbody>
-    ${cos.map(x => `<tr class="click" data-cm="${x.id}"><td class="c"><input type="checkbox" data-co="${x.id}"></td><td class="w"><div class="n">${esc(x.name)}</div><small><a href="https://${esc(x.domain)}" target="_blank" rel="noopener">${esc(x.domain)}</a>${x.size ? ' · ' + esc(x.size) : ''}</small></td>
-      <td class="hide-m">${esc(x.city)}</td><td class="hide-m">${esc(x.sector)}</td><td>${x.score ? `<b>${x.score}</b>/10` : ''}</td><td class="hide-m" style="max-width:340px"><small>${esc(x.reason)}</small></td>
-      <td>${x.people || '—'}</td><td>${x.mails ? `<b style="color:var(--ok)">${x.mails}</b>` : '—'}</td><td>${pill(x.status)}</td></tr>`).join('')}</tbody></table></div>
-    <div class="selbar"><b id="fN">0 seçili</b><span class="sp"></span><select id="fMax"><option value="3">firma başı 3 kişi</option><option value="5" selected>5 kişi</option><option value="10">10 kişi</option></select>
-      <button class="btn" id="fPeople">👥 Kişileri bul</button><button class="btn" id="fDel">Sil</button></div>`
-    : empty(c.pending ? '<span class="spin"></span> AI firmaları arıyor…' : 'Henüz firma yok', c.pending ? 'Web araması ~1 dk sürer, liste kendiliğinden dolacak.' : '"Firma bul" ile AI web\'den aday firmaları getirsin.')}`;
-    const ids = () => [...el.querySelectorAll('[data-co]:checked')].map(x => +x.dataset.co);
-    const upd = () => { if ($('fN')) $('fN').textContent = ids().length ? ids().length + ' firma seçili' : 'Firma seç (veya tümü)'; };
-    upd();
-    el.onchange = e => { if (e.target.id === 'fAll') el.querySelectorAll('[data-co]').forEach(x => x.checked = e.target.checked); upd(); };
-    el.onclick = e => { const r = e.target.closest('[data-cm]'); if (r && !e.target.closest('input,a,button,label')) companyModal(+r.dataset.cm, c.id, draw); };
-    $('fcGo').onclick = ev => busyBtn(ev.currentTarget, async () => { await post(`/api/campaigns/${c.id}/find-companies`, { count: +$('fcCount').value, people: $('fcPeople').checked }); toast('AI firma araması başladı, liste birazdan dolacak'); }, 'Kuyruğa');
-    $('fcManual').onclick = () => modal('Elle firma ekle', `<p class="mut" style="margin-top:0">Her satıra bir firma: <code>Firma Adı, alanadi.com</code></p><textarea id="mText" rows="8" placeholder="Farplas Otomotiv, farplas.com&#10;EKU Fren, eku.com.tr"></textarea><div class="row" style="margin-top:12px"><span class="sp"></span><button class="btn pri" id="mGo">Ekle</button></div>`,
-      b => b.querySelector('#mGo').onclick = tryT(async () => { const r = await post(`/api/campaigns/${c.id}/companies`, { text: b.querySelector('#mText').value }); closeModal(); toast(r.added + ' firma eklendi'); draw(); }));
-    if ($('fPeople')) {
-      $('fPeople').onclick = ev => busyBtn(ev.currentTarget, async () => {
-        const list = ids().length ? ids() : cos.filter(x => ['yeni', 'kişi yok'].includes(x.status)).map(x => x.id);
-        if (!list.length) return toast('Seçili firma yok', true);
-        const r = await post('/api/companies/people', { ids: list, max: +$('fMax').value }); toast(r.queued + ' firma kişi aramasına alındı'); draw();
-      }, 'Kuyruğa');
-      $('fDel').onclick = tryT(async () => { if (!ids().length || !confirm(ids().length + ' firma silinsin mi?')) return; await del('/api/companies', { ids: ids() }); draw(); });
-    }
-    clearInterval(timer);
-    timer = setInterval(() => { if ([`#c/${c.id}/companies`, `#c/${c.id}`].includes(location.hash) && !el.querySelector('[data-co]:checked') && $('modal').classList.contains('hide')) draw(); }, pending || !cos.length ? 8000 : 20000);
-  };
-  await draw();
-};
-
 const STAGES = ['aday', 'mail kuyrukta', 'mail aranıyor', 'mail var', 'mail yok', 'taslak', 'sırada', 'gönderildi', 'takip 1', 'takip 2', 'yanıtladı', 'engelli'];
 CTAB.people = async (c, el) => {
   let filter = '', q = '';
@@ -436,7 +334,7 @@ CTAB.people = async (c, el) => {
       ${STAGES.filter(cnt).map(s => `<button data-f="${s}" class="${filter === s ? 'on' : ''}">${s}<span class="cnt">${cnt(s)}</span></button>`).join('')}</div><span class="sp"></span>
       <button class="btn sm" id="lAdd">＋ Kişilerim'den ekle</button></div>
     ${list.length ? `<div class="tw"><table><thead><tr><th class="c"><input type="checkbox" id="lAll"></th><th>Kişi</th><th>Firma</th><th>LinkedIn</th><th>Mail</th><th>Aşama</th></tr></thead><tbody>
-    ${list.map(x => `<tr><td class="c"><input type="checkbox" data-l="${x.id}"></td><td class="w"><div class="n">${esc(x.name)}</div><small>${esc(x.title)}</small></td>
+    ${list.map(x => `<tr><td class="c"><input type="checkbox" data-l="${x.id}"></td><td class="w"><div class="ent">${avatar(x.name)}<div><div class="n">${esc(x.name)}</div><small>${esc(x.title)}</small></div></div></td>
       <td>${esc(x.company)}<small>${esc(x.location)}</small></td><td>${li(x.linkedin)}</td><td>${x.email ? `<span class="mail">${esc(x.email)}</span>` : '<span class="mut">—</span>'}</td><td>${pill(x.stage)}</td></tr>`).join('')}</tbody></table></div>
     <div class="selbar"><b id="lN"></b><span class="sp"></span><button class="btn" data-a="lookup">🔎 Mail bul</button><button class="btn" data-a="draft">✨ AI mail yaz</button><button class="btn" data-a="compose">✉ Şablonla yaz</button>
       <button class="btn" data-a="replied">💬 Yanıtladı</button><button class="btn" data-a="remove">Çıkar</button></div>`
@@ -576,7 +474,7 @@ function renderResults(r) {
   $('sres').innerHTML = `<div class="row" style="margin-bottom:10px"><b>${r.total.toLocaleString('tr')} sonuç</b><span class="mut">sayfa ${r.page}/${r.pages}</span><span class="sp"></span>
     <button class="btn sm" id="pPrev" ${r.page <= 1 ? 'disabled' : ''}>‹ Önceki</button><button class="btn sm" id="pNext" ${r.page >= r.pages ? 'disabled' : ''}>Sonraki ›</button></div>
   <div class="tw"><table><thead><tr><th class="c"><input type="checkbox" id="rAll"></th><th>Kişi</th><th>Şirket</th><th class="hide-m">Lokasyon</th><th>LinkedIn</th><th>Mail</th><th></th></tr></thead><tbody>
-  ${r.profiles.map((p, i) => `<tr data-i="${i}"><td class="c"><input type="checkbox" data-r="${i}"></td><td class="w"><div class="n">${esc(p.name)}</div><small>${esc(p.title)}</small></td><td>${esc(p.company)}<small>${esc(p.domain || '')}</small></td>
+  ${r.profiles.map((p, i) => `<tr data-i="${i}"><td class="c"><input type="checkbox" data-r="${i}"></td><td class="w"><div class="ent">${avatar(p.name)}<div><div class="n">${esc(p.name)}</div><small>${esc(p.title)}</small></div></div></td><td>${esc(p.company)}<small>${esc(p.domain || '')}</small></td>
     <td class="mut hide-m">${esc(p.location)}</td><td>${li(p.linkedin)}</td><td class="mc">${mailCell(p, i)}</td>
     <td class="fc">${p.contact ? `<button class="star ${p.contact.fav ? 'on' : ''}" data-fav="${p.contact.id}">★</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
   <div class="selbar"><b id="rN">Kişi seç</b><span class="sp"></span><select id="rCamp">${campOpts()}</select><button class="btn" id="rQ">⧗ Kuyruğa ekle (mail bul)</button></div>`;
@@ -629,7 +527,7 @@ function renderContacts(list) {
   const addTo = sessionStorage.getItem('addToCamp');
   $('clist').innerHTML = `<div class="tw"><table><thead><tr><th class="c"><input type="checkbox" id="call"></th><th class="c"></th><th>Kişi</th><th>Şirket</th><th>Mail</th><th class="hide-m">Telefon</th><th>LinkedIn</th><th class="hide-m">Kaynak</th><th></th></tr></thead><tbody>
   ${list.map(c => `<tr><td class="c"><input type="checkbox" data-sel="${c.id}" ${sel.has(c.id) ? 'checked' : ''}></td><td class="c"><button class="star ${c.fav ? 'on' : ''}" data-fav="${c.id}">★</button></td>
-    <td class="w"><div class="n">${esc(c.name)}</div><small>${esc(c.title)}</small></td><td>${esc(c.company)}<small>${esc(c.location)}</small></td>
+    <td class="w"><div class="ent">${avatar(c.name)}<div><div class="n">${esc(c.name)}</div><small>${esc(c.title)}</small></div></div></td><td>${esc(c.company)}<small>${esc(c.location)}</small></td>
     <td>${c.email ? `<span class="mail">${esc(c.email)}</span>${c.email_grade ? ` <span class="pill ok">${esc(c.email_grade)}</span>` : ''}` : `${pill(c.status)} <button class="btn sm ghost" data-edit="${c.id}" title="Elle mail ekle">✎</button>`}</td>
     <td class="mut hide-m">${esc(c.phones)}</td><td>${li(c.linkedin)}</td><td class="hide-m"><small>${esc(c.source)}${c.owner ? ' · ' + esc(c.owner) : ''}</small></td>
     <td><button class="icon" data-del="${c.id}" title="Sil">✕</button></td></tr>`).join('')}</tbody></table></div>
@@ -915,7 +813,7 @@ PAGES.maillist = tryT(async () => {
   const draw = async () => {
     rows = await api('/api/maillist?' + new URLSearchParams(f));
     $('mlt').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th class="c"><input type="checkbox" id="mlA"></th><th>Kişi</th><th>Firma</th><th>Mail</th><th class="hide-m">Kampanya</th><th>Son durum</th><th style="min-width:230px">Şablon</th></tr></thead><tbody>
-    ${rows.map(r => `<tr><td class="c"><input type="checkbox" data-ml="${r.id}" ${r.blocked ? 'disabled title="Engel listesinde"' : ''}></td><td class="w"><div class="n">${esc(r.name)}</div><small>${esc(r.title)}</small></td>
+    ${rows.map(r => `<tr><td class="c"><input type="checkbox" data-ml="${r.id}" ${r.blocked ? 'disabled title="Engel listesinde"' : ''}></td><td class="w"><div class="ent">${avatar(r.name)}<div><div class="n">${esc(r.name)}</div><small>${esc(r.title)}</small></div></div></td>
       <td>${esc(r.company)}<small>${esc(r.location || '')}</small></td><td><span class="mail">${esc(r.email)}</span> ${li(r.linkedin)}</td><td class="hide-m"><small>${esc(r.campaigns || '—')}</small></td>
       <td>${r.blocked ? pill('engelli') : r.replied ? pill('yanıtladı') : r.last_status ? pill(r.last_status) : '<span class="mut">yeni</span>'}${r.last_sent ? `<small>${fmtDate(r.last_sent)}</small>` : ''}</td>
       <td><select data-tp="${r.id}">${tplOpts(choice[r.id])}</select></td></tr>`).join('')}</tbody></table></div>`
@@ -976,5 +874,146 @@ PAGES.templates = tryT(async (sel) => {
   };
   draw();
 });
+
+// ---------- görsel yardımcılar ----------
+const favicon = d => d ? `<img class="fav" src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=64" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'fav fb',textContent:'${esc(String(d)[0] || '?').toUpperCase()}'}))">` : '<span class="fav fb">?</span>';
+const AVC = ['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#14b8a6'];
+const avatar = n => { n = String(n || '?').trim(); const i = n.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(); let h = 0; for (const ch of n) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `<span class="avt" style="--c:${AVC[h % AVC.length]}">${esc(i)}</span>`; };
+const ISO = { 'Türkiye':'tr','Almanya':'de','Avusturya':'at','İsviçre':'ch','Hollanda':'nl','Belçika':'be','Fransa':'fr','İtalya':'it','İspanya':'es','Polonya':'pl','Çekya':'cz','Romanya':'ro','Bulgaristan':'bg','Macaristan':'hu','İngiltere':'gb','Birleşik Krallık':'gb','İrlanda':'ie','İsveç':'se','Danimarka':'dk','Norveç':'no','ABD':'us','Amerika':'us','Kanada':'ca','Meksika':'mx','Brezilya':'br','BAE':'ae','Suudi Arabistan':'sa','Katar':'qa','Mısır':'eg','Fas':'ma','Azerbaycan':'az','Kazakistan':'kz','Özbekistan':'uz','Gürcistan':'ge','Irak':'iq','Hindistan':'in','Endonezya':'id','Malezya':'my','Güney Afrika':'za','Yunanistan':'gr','Sırbistan':'rs','Slovakya':'sk','Slovenya':'si','Hırvatistan':'hr','Portekiz':'pt','Finlandiya':'fi','Ukrayna':'ua','Rusya':'ru','Çin':'cn','Japonya':'jp','Güney Kore':'kr','Vietnam':'vn','Tayland':'th' };
+const flagImg = c => ISO[c] ? `<img class="flagi" src="https://flagcdn.com/w40/${ISO[c]}.png" alt="${c}" loading="lazy">` : '🌍';
+const FLAG = { 'Türkiye': '🇹🇷', 'Almanya': '🇩🇪', 'Avusturya': '🇦🇹', 'İsviçre': '🇨🇭', 'Hollanda': '🇳🇱', 'Belçika': '🇧🇪', 'Fransa': '🇫🇷', 'İtalya': '🇮🇹', 'İspanya': '🇪🇸', 'Polonya': '🇵🇱', 'Çekya': '🇨🇿', 'Romanya': '🇷🇴', 'Bulgaristan': '🇧🇬', 'Macaristan': '🇭🇺', 'İngiltere': '🇬🇧', 'İrlanda': '🇮🇪', 'İsveç': '🇸🇪', 'Danimarka': '🇩🇰', 'Norveç': '🇳🇴', 'ABD': '🇺🇸', 'Kanada': '🇨🇦', 'Meksika': '🇲🇽', 'Brezilya': '🇧🇷', 'BAE': '🇦🇪', 'Suudi Arabistan': '🇸🇦', 'Katar': '🇶🇦', 'Mısır': '🇪🇬', 'Fas': '🇲🇦', 'Azerbaycan': '🇦🇿', 'Kazakistan': '🇰🇿', 'Özbekistan': '🇺🇿', 'Gürcistan': '🇬🇪', 'Irak': '🇮🇶', 'Hindistan': '🇮🇳', 'Endonezya': '🇮🇩', 'Malezya': '🇲🇾', 'Güney Afrika': '🇿🇦' };
+const COUNTS = [10, 20, 40, 60, 100, 150, 200];
+const ico = (id, cls = '') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
+
+// ---------- AI kampanya önerileri ----------
+async function ideasInto(el, fresh) {
+  el.innerHTML = `<div class="ideas">${Array(4).fill('<div class="idea sk"></div>').join('')}</div>`;
+  try {
+    const list = await api('/api/ai/ideas' + (fresh ? '?fresh=1' : ''));
+    el.innerHTML = `<div class="ideas">${list.map((x, i) => `<div class="idea" data-idea="${i}">
+      <div class="idea-top"><span class="flag">${flagImg(x.country)}</span><span class="mut">${esc([x.location, x.country].filter(Boolean).join(', '))}</span></div>
+      <h4>${esc(x.sector)}</h4><p>${esc(x.why)}</p>${x.modules ? `<div class="chips">${String(x.modules).split(',').slice(0, 3).map(m => `<span class="chip">${esc(m.trim())}</span>`).join('')}</div>` : ''}
+      <button class="btn sm pri" data-go="${i}">Bu kampanyayı başlat →</button></div>`).join('')}</div>`;
+    el.onclick = e => {
+      const b = e.target.closest('[data-go]'); if (!b) return; const x = list[+b.dataset.go];
+      busyBtn(b, async () => {
+        const { id } = await post('/api/campaigns/quick', { sector: x.sector, location: x.location || '', country: x.country || 'Türkiye', titles: x.titles || '', count: 40, people: true, lookup: true });
+        await loadCamps(); location.hash = `c/${id}/companies`; toast('Kampanya başladı — AI firmaları arıyor');
+      }, 'Başlatılıyor');
+    };
+  } catch (e) { el.innerHTML = `<p class="mut">${esc(e.message)}</p>`; }
+}
+
+// ================= Panel =================
+PAGES.dash = tryT(async () => {
+  const [s, ev] = await Promise.all([api('/api/stats'), api('/api/events')]);
+  const steps = [[s.setup.project, 'Şirket profili', 'project'], [s.setup.openai, 'OpenAI', 'settings'], [s.setup.rr, 'RocketReach', 'settings'], [s.setup.gmail, 'Gmail', 'settings'], [s.setup.telegram, 'Telegram', 'settings']];
+  const lim = Math.max(s.limits.lookup, s.limits.arama);
+  const K = (icon, n, l, c) => `<div class="kcard" style="--k:${c}"><span class="kic">${ico(icon)}</span><b>${n}</b><span>${l}</span></div>`;
+  main.innerHTML = `<section class="hero">
+    <div class="hero-txt"><span class="eyebrow">Merhaba ${esc(ME.name)}</span><h1>Bugün hangi pazara açılıyoruz?</h1><p>Sektör ya da şehir yaz; AI firmaları bulsun, her firmadan en doğru tek yetkiliyi ve mailini çıkarsın.</p>
+      <form class="hero-form" id="hq"><input name="sector" placeholder="Sektör · ör. Gıda üretimi"><input name="location" placeholder="Şehir / ülke · ör. Bursa"><button class="btn pri">${ico('search')} Bul</button></form></div>
+    <div class="hero-stats">${K('building', s.companies, 'Firma', '#06b6d4')}${K('users', s.contacts, 'Yetkili', '#3b82f6')}${K('mail', s.withEmail, 'Mail bulundu', '#10b981')}${K('inbox', s.sent, 'Gönderildi', '#8b5cf6')}</div></section>
+  ${lim ? `<div class="banner">⏳ RocketReach limiti: ~${lim} dk sonra kuyruk kendiliğinden devam edecek.</div>` : ''}
+  <div class="dgrid">
+    <div class="card span2"><div class="card-h"><h3>✨ AI'ın önerdiği kampanyalar</h3><button class="btn sm ghost" id="ideaRe">Yenile</button></div><div id="ideas"></div></div>
+    <div class="card"><div class="card-h"><h3>Kampanyalar</h3><a href="#campaigns" class="btn sm ghost">Tümü →</a></div>
+      ${CAMPS.length ? `<div class="clist">${CAMPS.slice(0, 6).map(c => { const p = c.companies ? Math.round(c.with_email / c.companies * 100) : 0; return `<a href="#c/${c.id}/companies" class="citem"><div><b>${esc(c.name)}</b><small>${c.companies} firma · ${c.with_email} mail · ${c.sent} gönderildi</small></div><div class="ring" style="--p:${p}"><span>${p}%</span></div></a>`; }).join('')}</div>` : '<p class="mut">Henüz kampanya yok.</p>'}</div>
+    <div class="card"><div class="card-h"><h3>Gönderim</h3><a href="#schedule" class="btn sm ghost">Takvim →</a></div>
+      <div class="row" style="margin-bottom:10px">${s.sending.ok ? '<span class="pill ok">● Açık</span>' : `<span class="pill warn">${esc(s.sending.why)}</span>`}<span class="sp"></span><b>${s.sending.today}<span class="mut">/${s.sending.daily}</span></b></div>
+      <div class="bar"><i style="width:${Math.min(100, s.sending.today / Math.max(1, s.sending.daily) * 100)}%"></i></div>
+      <div class="mini3"><a href="#outbox/taslak"><b>${s.drafts}</b>Taslak</a><a href="#outbox/sırada"><b>${s.queued}</b>Sırada</a><a href="#queue"><b>${s.tasks + s.jobs}</b>Arka plan</a></div>
+      ${steps.some(x => !x[0]) ? `<div class="setup">${steps.map(([ok, t, h]) => `<a href="#${h}" class="${ok ? 'ok' : ''}">${ok ? '✓' : '○'} ${t}</a>`).join('')}</div>` : ''}</div>
+    <div class="card" id="quota"><h3>RocketReach kotası</h3><p class="mut"><span class="spin"></span></p></div>
+    <div class="card span2"><div class="card-h"><h3>Son hareketler</h3><span class="mut" style="font-size:12px">Telegram'a da gider</span></div>${feedHtml(ev.slice(0, 14))}</div>
+  </div>`;
+  $('hq').onsubmit = e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); if (!f.sector && !f.location) return toast('Sektör ya da şehir yaz', true); sessionStorage.setItem('nc', JSON.stringify(f)); location.hash = 'newcamp'; };
+  ideasInto($('ideas')); $('ideaRe').onclick = () => ideasInto($('ideas'), true);
+  quotaCard();
+});
+
+// ================= Firma Bul =================
+PAGES.newcamp = () => {
+  const pre = JSON.parse(sessionStorage.getItem('nc') || '{}'); sessionStorage.removeItem('nc');
+  main.innerHTML = head('Firma Bul', 'Sektör, şehir ya da ülke — biri yeter. AI web\'den gerçek firmaları bulur; her firmadan en uygun <b>tek</b> yetkiliyi ve mailini çıkarır.') +
+  `<div class="seg" id="seg"><button class="on" data-m="ai">✨ AI ile bul</button><button data-m="list">📋 Listemi ver</button><button data-m="ideas">💡 Öneriler</button></div>
+  <form class="card quick" id="qf"><div class="grid g3 big">
+    <label>Sektör<input name="sector" id="qS" value="${esc(pre.sector || '')}" placeholder="ör. Otomotiv yan sanayi" autocomplete="off"></label>
+    <label>Şehir / bölge<input name="location" id="qL" value="${esc(pre.location || '')}" placeholder="ör. Gebze OSB" autocomplete="off"></label>
+    <label>Ülke<select name="country" id="qC">${COUNTRIES.map(c => `<option value="${c}">${FLAG[c] || ''} ${c}</option>`).join('')}</select></label></div>
+    <div class="chips" style="margin-top:12px">${SECTORS.map(x => `<span class="chip sug" data-qs="${esc(x)}">${esc(x)}</span>`).join('')}</div>
+    <div class="chips" style="margin-top:8px">${PLACES.map(x => `<span class="chip sug" data-ql="${esc(x)}">📍 ${esc(x)}</span>`).join('')}</div>
+    <div class="countpick"><span>Kaç firma?</span>${COUNTS.map(n => `<label><input type="radio" name="count" value="${n}" ${n === 40 ? 'checked' : ''}><span>${n}</span></label>`).join('')}</div>
+    <div class="grid g2" style="margin-top:12px"><label>Büyüklük<select name="size"><option value="">Farketmez</option><option>50+ çalışan</option><option>100+ çalışan</option><option>250+ çalışan</option><option>500+ çalışan (kurumsal)</option></select></label>
+      <label>Ek not (opsiyonel)<input name="note" placeholder="ör. OSB içindekiler, ihracatçılar"></label></div>
+    <div class="row" style="margin-top:14px"><label class="inline"><input type="checkbox" name="people" checked> Her firmadan en uygun yetkiliyi bul</label><label class="inline"><input type="checkbox" name="lookup" checked> Mailini de çıkar</label></div>
+    <div class="row" style="margin-top:18px"><button class="btn pri lg">${ico('search')} Firmaları bul</button><span class="mut" style="font-size:12.5px">20 firmalık turlar halinde arar (~1 dk/tur); 200 firma ~10 dk sürer, arka planda devam eder.</span></div></form>
+  <form class="card quick hide" id="lf2"><h3>Firma listesini sen ver</h3><p class="hint">Her satıra bir firma: <code>Firma adı, alanadi.com</code>. Her firmadan en uygun tek yetkili bulunur.</p>
+    <textarea name="text" rows="7" placeholder="Farplas Otomotiv, farplas.com&#10;Assan Hanil, assanhanil.com.tr&#10;Bosch Bursa, bosch.com.tr"></textarea>
+    <div class="grid g2" style="margin-top:12px"><label>Kampanya adı<input name="name" placeholder="ör. Bursa otomotiv listem"></label><label>Öncelikli unvanlar (virgülle)<input name="titles" placeholder="İSG Müdürü, Fabrika Müdürü, Plant Manager"></label></div>
+    <div class="row" style="margin-top:14px"><label class="inline"><input type="checkbox" name="lookup" checked> Mailini de çıkar</label><span class="sp"></span><button class="btn pri">${ico('users')} Yetkilileri bul</button></div></form>
+  <div class="card hide" id="ideaCard"><div class="card-h"><h3>✨ Şirket profiline göre AI önerileri</h3><button class="btn sm ghost" id="ideaRe2">Yeni öneriler</button></div><div id="ideas2"></div></div>`;
+  $('seg').onclick = e => { const b = e.target.closest('[data-m]'); if (!b) return; $('seg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    $('qf').classList.toggle('hide', b.dataset.m !== 'ai'); $('lf2').classList.toggle('hide', b.dataset.m !== 'list'); $('ideaCard').classList.toggle('hide', b.dataset.m !== 'ideas');
+    if (b.dataset.m === 'ideas' && !$('ideas2').innerHTML) ideasInto($('ideas2')); };
+  $('ideaRe2').onclick = () => ideasInto($('ideas2'), true);
+  main.onclick = e => {
+    const a = e.target.closest('[data-qs]'); if (a) $('qS').value = a.dataset.qs;
+    const b = e.target.closest('[data-ql]'); if (b) $('qL').value = $('qL').value && !$('qL').value.includes(b.dataset.ql) ? $('qL').value + ', ' + b.dataset.ql : b.dataset.ql;
+  };
+  $('lf2').onsubmit = e => { e.preventDefault(); busyBtn(e.target.querySelector('.btn.pri'), async () => {
+    const f = Object.fromEntries(new FormData(e.target)); f.lookup = !!f.lookup;
+    const { id } = await post('/api/campaigns/from-list', f); await loadCamps(); location.hash = `c/${id}/companies`; toast('Yetkililer aranıyor…');
+  }, 'Hazırlanıyor'); };
+  $('qf').onsubmit = e => { e.preventDefault(); busyBtn(e.target.querySelector('.btn.pri'), async () => {
+    const f = Object.fromEntries(new FormData(e.target)); f.people = !!f.people; f.lookup = !!f.lookup;
+    const { id } = await post('/api/campaigns/quick', f); await loadCamps(); location.hash = `c/${id}/companies`; toast(`AI ${f.count} firma arıyor…`);
+  }, 'Hazırlanıyor'); };
+};
+
+// ================= Kampanya · Firmalar (firma başı tek yetkili, aynı satırda) =================
+CTAB.companies = async (c, el) => {
+  const draw = async () => {
+    const cos = await api(`/api/campaigns/${c.id}/companies`);
+    cos.forEach(x => { try { x.p = x.person ? JSON.parse(x.person) : null; } catch { x.p = null; } });
+    const pending = cos.some(x => ['kuyrukta', 'kişi aranıyor'].includes(x.status)) || c.pending;
+    el.innerHTML = `<div class="toolbar"><div class="countpick sm"><span>Daha fazla firma</span>${COUNTS.map(n => `<label><input type="radio" name="fcc" value="${n}" ${n === 40 ? 'checked' : ''}><span>${n}</span></label>`).join('')}</div>
+      <span class="sp"></span><button class="btn pri" id="fcGo">✨ Firma bul</button><button class="btn" id="fcManual">＋ Elle ekle</button></div>
+    ${cos.length ? `<div class="tw"><table class="tbl"><thead><tr><th class="c"><input type="checkbox" id="fAll"></th><th>Firma</th><th>Yetkili</th><th>Mail</th><th class="hide-m">Uygunluk</th><th>Durum</th></tr></thead><tbody>
+    ${cos.map(x => `<tr class="click" data-cm="${x.id}"><td class="c"><input type="checkbox" data-co="${x.id}"></td>
+      <td class="w"><div class="ent">${favicon(x.domain)}<div><div class="n">${esc(x.name)}</div><small>${esc([x.city, x.sector].filter(Boolean).join(' · '))} · <a href="https://${esc(x.domain)}" target="_blank" rel="noopener">${esc(x.domain)}</a></small></div></div></td>
+      <td>${x.p ? `<div class="ent">${avatar(x.p.name)}<div><div class="n">${esc(x.p.name)} ${li(x.p.linkedin)}</div><small>${esc(x.p.title)}</small></div></div>` : `<span class="mut">${['kuyrukta', 'kişi aranıyor'].includes(x.status) ? '<span class="spin"></span> aranıyor' : '—'}</span>`}</td>
+      <td>${x.p?.email ? `<span class="mail">${esc(x.p.email)}</span>` : x.p ? pill(x.p.stage) : ''}</td>
+      <td class="hide-m">${x.score ? `<div class="score"><i style="width:${x.score * 10}%"></i></div><small title="${esc(x.reason)}">${esc(String(x.reason || '').slice(0, 70))}${String(x.reason || '').length > 70 ? '…' : ''}</small>` : ''}</td>
+      <td>${pill(x.status)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="selbar"><b id="fN"></b><span class="sp"></span><button class="btn" id="fPeople">${ico('users')} Yetkiliyi bul</button><button class="btn" id="fLook">${ico('mail')} Mailini bul</button><button class="btn" id="fDel">Sil</button></div>`
+    : empty(pending ? '<span class="spin"></span> AI firmaları arıyor…' : 'Henüz firma yok', pending ? 'Her tur ~1 dk; liste kendiliğinden dolacak.' : '"Firma bul" ile AI web\'den firmaları getirsin.')}`;
+    const ids = () => [...el.querySelectorAll('[data-co]:checked')].map(x => +x.dataset.co);
+    const upd = () => { if ($('fN')) $('fN').textContent = ids().length ? ids().length + ' firma seçili' : 'Seçmezsen: yetkilisi olmayan tüm firmalar'; };
+    upd();
+    el.onchange = e => { if (e.target.id === 'fAll') el.querySelectorAll('[data-co]').forEach(x => x.checked = e.target.checked); upd(); };
+    el.onclick = e => { const r = e.target.closest('[data-cm]'); if (r && !e.target.closest('input,a,button,label')) companyModal(+r.dataset.cm, c.id, draw); };
+    $('fcGo').onclick = ev => busyBtn(ev.currentTarget, async () => { const n = +el.querySelector('[name=fcc]:checked').value; await post(`/api/campaigns/${c.id}/find-companies`, { count: n, people: true }); toast(`AI ${n} firma daha arıyor`); }, 'Kuyruğa');
+    $('fcManual').onclick = () => modal('Elle firma ekle', `<p class="mut" style="margin-top:0">Her satıra bir firma: <code>Firma Adı, alanadi.com</code></p><textarea id="mText" rows="8" placeholder="Farplas Otomotiv, farplas.com&#10;EKU Fren, eku.com.tr"></textarea><div class="row" style="margin-top:12px"><span class="sp"></span><button class="btn pri" id="mGo">Ekle</button></div>`,
+      b => b.querySelector('#mGo').onclick = tryT(async () => { const r = await post(`/api/campaigns/${c.id}/companies`, { text: b.querySelector('#mText').value }); closeModal(); toast(r.added + ' firma eklendi'); draw(); }));
+    if ($('fPeople')) {
+      $('fPeople').onclick = ev => busyBtn(ev.currentTarget, async () => {
+        const list = ids().length ? ids() : cos.filter(x => !x.p && ['yeni', 'kişi yok'].includes(x.status)).map(x => x.id);
+        if (!list.length) return toast('Yetkilisi aranacak firma yok', true);
+        const r = await post('/api/companies/people', { ids: list }); toast(`${r.queued} firmada yetkili aranıyor (firma başı 1 kişi)`); draw();
+      }, 'Kuyruğa');
+      $('fLook').onclick = ev => busyBtn(ev.currentTarget, async () => {
+        const sel = ids().length ? cos.filter(x => ids().includes(x.id)) : cos;
+        const people = sel.filter(x => x.p && !x.p.email).map(x => x.p.id);
+        if (!people.length) return toast('Maili aranacak yetkili yok', true);
+        toast(lookupMsg(await post('/api/queue/lookup', { contact_ids: people, campaign_id: c.id }))); draw();
+      }, 'Kuyruğa');
+      $('fDel').onclick = tryT(async () => { if (!ids().length || !confirm(ids().length + ' firma silinsin mi?')) return; await del('/api/companies', { ids: ids() }); draw(); });
+    }
+    clearInterval(timer);
+    timer = setInterval(() => { if ([`#c/${c.id}/companies`, `#c/${c.id}`].includes(location.hash) && !el.querySelector('[data-co]:checked') && $('modal').classList.contains('hide')) draw(); }, pending || !cos.length ? 8000 : 20000);
+  };
+  await draw();
+};
 
 boot();

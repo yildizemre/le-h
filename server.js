@@ -100,7 +100,7 @@ app.put('/api/settings', auth, admin, (req, res) => {
   if (b.schedule) {
     const s = { ...mailer.SCHED_DEF, ...b.schedule };
     s.days = (s.days || []).map(Number); s.start = Math.min(23, Math.max(0, +s.start)); s.end = Math.min(24, Math.max(s.start + 1, +s.end));
-    s.daily = Math.max(1, Math.min(500, +s.daily)); s.warmup = !!s.warmup; s.per_domain = Math.max(1, Math.min(10, +s.per_domain || 2)); s.min_delay = Math.max(20, +s.min_delay); s.max_delay = Math.max(s.min_delay, +s.max_delay);
+    s.daily = Math.max(1, Math.min(500, +s.daily)); s.warmup = !!s.warmup; s.safe_mode = s.safe_mode !== false; s.plain_first = s.plain_first !== false; s.optout = s.optout !== false; s.per_domain = Math.max(1, Math.min(10, +s.per_domain || 2)); s.min_delay = Math.max(20, +s.min_delay); s.max_delay = Math.max(s.min_delay, +s.max_delay);
     setSetting('schedule', JSON.stringify(s));
   }
   res.json({ ok: true });
@@ -495,6 +495,7 @@ app.post('/api/outbox/compose-multi', auth, wrap(async (req, res) => {
     }
     const v = await verifier.checkContact(c); // adres doğrulama
     if (v.status === 'geçersiz') { out.skipped.push({ id: c.id, why: 'adres geçersiz (' + v.reason + ')' }); continue; }
+    if (mailer.schedule().safe_mode && !v.verified && !force) { out.skipped.push({ id: c.id, why: 'güvenli mod: adres doğrulanmamış' }); continue; }
     if (v.status === 'riskli') out.risky++;
     const camp = campaign_id || get('SELECT campaign_id FROM leads WHERE contact_id=? ORDER BY created DESC LIMIT 1', c.id)?.campaign_id || null;
     run('INSERT INTO outbox(campaign_id,contact_id,step,to_email,subject,body,status,user_id,template_id,personal) VALUES(?,?,0,?,?,?,?,?,?,?)',

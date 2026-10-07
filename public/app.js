@@ -641,6 +641,9 @@ PAGES.schedule = tryT(async () => {
     <div class="grid g2"><label>Başlangıç saati<input type="number" id="sStart" min="0" max="23" value="${sc.start}"></label><label>Bitiş saati<input type="number" id="sEnd" min="1" max="24" value="${sc.end}"></label>
     <label>Günlük maksimum mail<input type="number" id="sDaily" min="1" max="500" value="${sc.daily}"></label><div></div>
     <div class="toggle-row" style="grid-column:1/-1"><div><b>Isınma modu (önerilir)</b><small>Yeni hesapta günde 10 mail ile başlar, her gün +3 artar; günlük limite ulaşınca sabitlenir.</small></div><label class="switch"><input type="checkbox" id="sWarm" ${sc.warmup !== false ? 'checked' : ''}><i></i></label></div>
+    <div class="toggle-row" style="grid-column:1/-1"><div><b>🛡️ Güvenli mod (önerilir)</b><small>Sadece RocketReach'in doğruladığı (geçerli, A/B notlu) adreslere gönderir. Geri dönen mail = ban riski; bu en etkili koruma.</small></div><label class="switch"><input type="checkbox" id="sSafe" ${sc.safe_mode !== false ? 'checked' : ''}><i></i></label></div>
+    <div class="toggle-row" style="grid-column:1/-1"><div><b>İlk mailde sade imza</b><small>İlk mailde logo ve link olmadan düz metin imza; takip ve cevaplarda tam imza. Spam puanını düşürür.</small></div><label class="switch"><input type="checkbox" id="sPlain" ${sc.plain_first !== false ? 'checked' : ''}><i></i></label></div>
+    <div class="toggle-row" style="grid-column:1/-1"><div><b>Çıkış cümlesi</b><small>İlk maile "uygun değilse yazmanız yeterli, tekrar rahatsız etmem" eklenir. Spam şikâyetini azaltır.</small></div><label class="switch"><input type="checkbox" id="sOpt" ${sc.optout !== false ? 'checked' : ''}><i></i></label></div>
     <label>Aynı firmaya günde en fazla<input type="number" id="sDom" min="1" max="10" value="${sc.per_domain || 2}"></label><div></div>
     <label>Mailler arası en az (sn)<input type="number" id="sMin" min="20" value="${sc.min_delay}"></label><label>En fazla (sn)<input type="number" id="sMax" min="20" value="${sc.max_delay}"></label></div>
     <div class="toggle-row" style="margin-top:14px"><div><b>Gönderimi duraklat</b><small>Tüm kuyruk bekler</small></div><label class="switch"><input type="checkbox" id="sPause" ${s.sending_paused ? 'checked' : ''}><i></i></label></div>
@@ -657,7 +660,7 @@ PAGES.schedule = tryT(async () => {
   $('sReply').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/sending/check-replies'); toast('Gelen kutusu tarandı'); }, 'Taranıyor');
   $('sSave').onclick = e => busyBtn(e.currentTarget, async () => {
     const days = [...document.querySelectorAll('#sDays .on')].map(x => +x.dataset.d);
-    await put('/api/settings', { schedule: { days, start: +$('sStart').value, end: +$('sEnd').value, daily: +$('sDaily').value, min_delay: +$('sMin').value, max_delay: +$('sMax').value, warmup: $('sWarm').checked, per_domain: +$('sDom').value }, sending_paused: $('sPause').checked });
+    await put('/api/settings', { schedule: { days, start: +$('sStart').value, end: +$('sEnd').value, daily: +$('sDaily').value, min_delay: +$('sMin').value, max_delay: +$('sMax').value, warmup: $('sWarm').checked, per_domain: +$('sDom').value, safe_mode: $('sSafe').checked, plain_first: $('sPlain').checked, optout: $('sOpt').checked }, sending_paused: $('sPause').checked });
     toast('Takvim kaydedildi'); PAGES.schedule();
   }, 'Kaydediliyor');
 });

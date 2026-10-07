@@ -163,24 +163,7 @@ app.delete('/api/campaigns/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 // Hızlı kampanya: sektör ve/veya konum yeter; AI hedeflemeyi doldurur, firma aramasını hemen başlatır
-app.post('/api/campaigns/quick', auth, wrap(async (req, res) => {
-  let { sector = '', location = '', country = 'Türkiye', size = '', note = '', count = 20, people = true, lookup = true, titles = '', kind = '' } = req.body;
-  if (country && country !== 'Türkiye') location = [location, country].filter(Boolean).join(', ');
-  if (!sector.trim() && !location.trim()) throw Object.assign(new Error('Sektör veya konumdan en az birini yaz'), { status: 400 });
-  const brief = [sector ? sector + ' sektöründeki' : 'Üretim yapan', 'firmalar / fabrikalar', location ? '(' + location + ')' : '', size ? '— ' + size : '', note].filter(Boolean).join(' ');
-  let s = {};
-  try { s = await ai.suggestCampaign(brief); } catch (e) { console.error('suggest', e.message); }
-  const name = [sector || 'Fabrikalar', location].filter(Boolean).join(' · ');
-  if (titles) s.titles = String(titles).split(',').map(x => x.trim()).filter(Boolean).concat(s.titles || []);
-  if (kind === 'partner') s.titles = ['Genel Müdür', 'Kurucu', 'Kurucu Ortak', 'İş Geliştirme Müdürü', 'Satış Müdürü', 'Managing Director', 'Founder', 'Business Development'];
-  const v = campVals({ ...s, kind, name, brief, sector, location, geography: location || country || 'Türkiye', size: size || s.size || '', auto_lookup: lookup ? 1 : 0 });
-  const id = Number(run(`INSERT INTO campaigns(${v.map(x => x[0]).join(',')},user_id) VALUES(${v.map(() => '?').join(',')},?)`, ...v.map(x => x[1]), req.user.id).lastInsertRowid);
-  const n = Math.min(200, Math.max(5, +count || 20));
-  for (let left = n, i = 0; left > 0; left -= 20, i++) worker.enqueue('ai_companies', { count: Math.min(20, left), people: !!people, n: Date.now() + i }, id, req.user.id);
-  worker.loop();
-  event('info', `Yeni kampanya: ${name} — AI ${n} firma arıyor`, id);
-  res.json({ id });
-}));
+app.post('/api/campaigns/quick', auth, wrap(async (req, res) => res.json({ id: await worker.createQuick(req.body, req.user.id) })));
 // Firma listesinden kampanya: yapıştırılan her satır bir firma, hepsinde yetkili aranır
 app.post('/api/campaigns/from-list', auth, wrap(async (req, res) => {
   const { name, text = '', titles = '', lookup = true } = req.body;
@@ -207,22 +190,17 @@ app.get('/api/companies/:id', auth, (req, res) => {
 });
 app.get('/api/rr/quota', auth, wrap(async (req, res) => res.json({ list: await rr.quotas(req.query.force), limits: { lookup: Math.ceil(rr.remaining('lookup') / 60), arama: Math.ceil(rr.remaining('arama') / 60) } })));
 // AI kampanya önerileri: şirket profiline + mevcut kampanyalara bakıp yeni hedef pazarlar önerir (günlük önbellek)
-app.get('/api/ai/ideas', auth, wrap(async (req, res) => {
-  const cache = jsonSetting('ideas_cache', {});
-  if (!req.query.fresh && cache.t && Date.now() - cache.t < 864e5 && cache.list?.length) return res.json(cache.list);
-  const p = ai.project(), done = all('SELECT name, sector, location FROM campaigns').map(c => [c.sector, c.location, c.name].filter(Boolean).join(' / '));
-  const r = await ai.ask(`Sen B2B büyüme stratejistisin. Aşağıdaki şirket için soğuk mail kampanyası önerileri üret.
-Şirket: ${p.company || ''} — ${p.description || ''}
-Teklif: ${p.offer || ''}
-Yetenekler: ${String(p.capabilities || '').slice(0, 800)}
-Mevcut kampanyalar (tekrar etme): ${done.join('; ') || '-'}
-8 öneri ver: yarısı Türkiye'de farklı sanayi bölgeleri/sektörler, yarısı yurt dışı (ülke ülke, Türkiye'ye yakın ve üretim yoğun pazarlar).
-Her biri farklı bir sektör+bölge kombinasyonu olsun; neden şimdi mantıklı olduğunu somut yaz (mevzuat, yoğunluk, kaza riski, ihracat vb.).
-Sadece JSON: {"ideas":[{"name":"kısa ad","sector":"","location":"şehir/bölge (boş olabilir)","country":"Türkiye veya ülke adı (Türkçe)","why":"1 cümle","titles":"aranacak 3-4 unvan, virgülle","modules":"öne çıkacak 2-3 modül"}]}`);
-  const list = (r.ideas || []).filter(x => x.sector);
-  setSetting('ideas_cache', JSON.stringify({ t: Date.now(), list }));
-  res.json(list);
-}));
+app.get('/api/ai/ideas', auth, wrap(async (req, res) => res.json(await insights.getIdeas(!!req.query.fresh))));
+// Otomatik günlük kampanya ayarı + şimdi çalıştır
+app.get('/api/auto-daily', auth, (req, res) => res.json({ ...insights.autoCfg(), last: setting('auto_daily_done'), list: all("SELECT id,name,created FROM campaigns WHERE auto=1 ORDER BY id DESC LIMIT 10") }));
+app.put('/api/auto-daily', auth, admin, (req, res) => {
+  const c = { ...insights.autoCfg(), ...req.body }; c.count = Math.max(5, Math.min(60, +c.count || 20)); c.hour = Math.max(6, Math.min(16, +c.hour || 8)); c.enabled = !!c.enabled; c.lookup = !!c.lookup; c.tr_only = !!c.tr_only;
+  setSetting('auto_daily', JSON.stringify(c)); res.json(c);
+});
+app.post('/api/auto-daily/run', auth, wrap(async (req, res) => { const r = await insights.autoCampaign(true); if (!r) throw Object.assign(new Error('Yeni öneri kalmadı'), { status: 400 }); res.json(r); }));
+// Kullanım: RocketReach bütçe + OpenAI maliyeti
+app.get('/api/usage', auth, wrap(async (req, res) => res.json({ rr: await rr.lookupBudget(), rr_month_budget: +setting('rr_month_budget') || 0, ai: ai.usage(30) })));
+app.put('/api/usage', auth, admin, (req, res) => { setSetting('rr_month_budget', String(Math.max(0, +req.body.rr_month_budget || 0))); res.json({ ok: true }); });
 app.post('/api/ai/suggest', auth, wrap(async (req, res) => res.json(await ai.suggestCampaign(req.body.brief || ''))));
 
 app.post('/api/campaigns/:id/find-companies', auth, (req, res) => {
@@ -632,7 +610,7 @@ app.get('/api/events', auth, (req, res) => {
 const maskPass = p => p ? '••••' + String(p).slice(-3) : '';
 app.get('/api/senders', auth, (req, res) => {
   const st = Object.fromEntries(mailer.senderStats().map(s => [s.id, s]));
-  res.json(all('SELECT id,email,pass,name,daily,active,note,created FROM senders ORDER BY id').map(s => ({ ...s, pass: maskPass(s.pass), today: st[s.id]?.today || 0, eff: st[s.id]?.daily || 0 })));
+  res.json(all('SELECT id,email,pass,name,daily,active,note,signature,created FROM senders ORDER BY id').map(s => ({ ...s, pass: maskPass(s.pass), today: st[s.id]?.today || 0, eff: st[s.id]?.daily || 0 })));
 });
 app.post('/api/senders', auth, admin, wrap(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase(), pass = String(req.body.pass || '').replace(/\s+/g, '');
@@ -646,7 +624,8 @@ app.post('/api/senders', auth, admin, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 app.put('/api/senders/:id', auth, admin, (req, res) => {
-  const { name, daily, active, pass } = req.body, id = +req.params.id;
+  const { name, daily, active, pass, signature } = req.body, id = +req.params.id;
+  if (signature !== undefined) run('UPDATE senders SET signature=? WHERE id=?', String(signature), id);
   if (name !== undefined) run('UPDATE senders SET name=? WHERE id=?', name, id);
   if (daily !== undefined) run('UPDATE senders SET daily=? WHERE id=?', Math.max(5, Math.min(200, +daily || 40)), id);
   if (active !== undefined) run("UPDATE senders SET active=?, note='' WHERE id=?", active ? 1 : 0, id);
@@ -707,10 +686,12 @@ app.get('/api/signals', auth, (req, res) => {
   const { campaign, status } = req.query; let sql = 'SELECT s.*, k.name AS campaign FROM signals s LEFT JOIN campaigns k ON k.id=s.campaign_id WHERE 1=1'; const a = [];
   if (campaign) { sql += ' AND s.campaign_id=?'; a.push(+campaign); }
   sql += status ? ' AND s.status=?' : " AND s.status<>'gizli'"; if (status) a.push(status);
-  res.json(all(sql + ' ORDER BY s.date DESC, s.id DESC LIMIT 300', ...a));
+  res.json(all(sql + ' ORDER BY s.score DESC, s.date DESC, s.id DESC LIMIT 300', ...a));
 });
 app.post('/api/signals/scan', auth, (req, res) => {
-  const ids = req.body.campaign_id ? [+req.body.campaign_id] : all("SELECT id FROM campaigns WHERE status='aktif' AND kind<>'partner'").map(c => c.id);
+  // Kampanya seçilmezse sadece sıradaki tek kampanya taranır (her tarama bir web araması = maliyet)
+  let ids = req.body.campaign_id ? [+req.body.campaign_id] : [];
+  if (!ids.length) { const cs = all("SELECT id FROM campaigns WHERE status='aktif' AND kind<>'partner' ORDER BY id"); if (cs.length) { const i = (+setting('sig_rr') || 0) % cs.length; setSetting('sig_rr', String(i + 1)); ids = [cs[i].id]; } }
   let n = 0; for (const id of ids) n += worker.enqueue('signals', { campaign_id: id, t: Date.now() }, id, req.user.id) ? 1 : 0;
   worker.loop(); res.json({ queued: n });
 });

@@ -718,6 +718,7 @@ PAGES.settings = tryT(async () => {
       <p class="mut" style="font-size:12px;margin:10px 0 0">Haftalık özet her pazartesi 09:00'da, "bugün geri aranacaklar" her iş günü 09:00'da otomatik gelir.</p></div>
   </div><div>
     <div class="card" id="sendersCard"></div>
+    <div class="card" id="autoCard"></div>
     <div class="card" id="dhCard"></div>
     <div class="card"><h3>İmzam</h3><p class="hint">Gönderdiğin her mailin altına eklenir. HTML kullanabilirsin (logo için &lt;img src="https://…" height="40"&gt;).</p>
       <textarea id="sig" rows="6" placeholder="Emre Yıldız&lt;br&gt;Hype Vision · hypevisionlab.com&lt;br&gt;+90 …">${esc(me.signature)}</textarea><div class="preview" id="sigp" style="margin-top:10px;min-height:50px"></div>
@@ -736,7 +737,7 @@ PAGES.settings = tryT(async () => {
   $('okt').onclick = e => busyBtn(e.currentTarget, async () => {
     try { const r = await post('/api/test/openai'); $('oki').innerHTML = `<span class="pill ok">Çalışıyor</span> ${esc(r.text)}`; } catch (er) { $('oki').innerHTML = `<span class="pill bad">${esc(er.message)}</span>`; }
   }, 'Test');
-  renderSenders($('sendersCard')); renderDomain($('dhCard'));
+  renderSenders($('sendersCard')); renderDomain($('dhCard')); autoCard($('autoCard'));
   $('wrep').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/report/weekly'); toast('Haftalık rapor Telegram\'a gönderildi'); }, 'Gönderiliyor');
   $('ttest').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/test/telegram', { token: $('tt').value.trim(), chat: $('tc').value.trim() }); toast('Telegram mesajı gönderildi ✓'); }, 'Gönderiliyor');
   $('tmute').onclick = e => { const c = e.target.closest('[data-ev]'); if (c && adm) c.classList.toggle('on'); };
@@ -830,12 +831,13 @@ PAGES.dash = tryT(async () => {
       <div class="mini3"><a href="#outbox/taslak"><b>${s.drafts}</b>Taslak</a><a href="#outbox/sırada"><b>${s.queued}</b>Sırada</a><a href="#queue"><b>${s.tasks + s.jobs}</b>Arka plan</a></div>
       <div class="mini3" style="grid-template-columns:1fr 1fr"><a href="#replies"><b style="${s.replies ? 'color:var(--ok)' : ''}">${s.replies}</b>Yanıt bekliyor</a><a href="#calls/bug%C3%BCn"><b>${s.callsToday}</b>Bugün aranacak</a></div>
       ${steps.some(x => !x[0]) ? `<div class="setup">${steps.map(([ok, t, h]) => `<a href="#${h}" class="${ok ? 'ok' : ''}">${ok ? '✓' : '○'} ${t}</a>`).join('')}</div>` : ''}</div>
+    <div class="card" id="usage"><h3>Kullanım ve bütçe</h3><p class="mut"><span class="spin"></span></p></div>
     <div class="card" id="quota"><h3>RocketReach kotası</h3><p class="mut"><span class="spin"></span></p></div>
     <div class="card span2"><div class="card-h"><h3>Son hareketler</h3><span class="mut" style="font-size:12px">Telegram'a da gider</span></div>${feedHtml(ev.slice(0, 14))}</div>
   </div>`;
   $('hq').onsubmit = e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); if (!f.sector && !f.location) return toast('Sektör ya da şehir yaz', true); sessionStorage.setItem('nc', JSON.stringify(f)); location.hash = 'newcamp'; };
   ideasInto($('ideas')); $('ideaRe').onclick = () => ideasInto($('ideas'), true);
-  quotaCard();
+  quotaCard(); usageCard($('usage'));
 });
 
 // ================= Firma Bul =================
@@ -1211,6 +1213,138 @@ PAGES.templates = tryT(async (sel) => {
     if ($('tDl')) $('tDl').onclick = tryT(async () => { if (!confirm('Şablon silinsin mi?')) return; await del('/api/templates/' + cur.id); TPLS = await api('/api/templates'); cur = TPLS[0] || { id: 0, name: '', subject: '', body: '' }; draw(); });
   };
   draw();
+});
+
+
+// ================= v10 · hesap başı imza, kapasite planı, kullanım/bütçe, otomatik kampanya, puanlı sinyaller =================
+const SIG_ADDR = 'Muallimköy Mah. Deniz Cad. No: 143/8 1.1.C1 Blok Zemin Kat<br>Kapı No: Z01 Gebze / KOCAELİ';
+function buildSignature({ name = '', title = '', phone = '', address = SIG_ADDR, web = 'hypevisionlab.com', logo = 'https://hypevisionlab.com/hypevisionlogo.png' }) {
+  const tel = String(phone).replace(/[^\d+]/g, '');
+  return `<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,Helvetica,sans-serif;color:#1f2937;font-size:13px;line-height:1.5">
+  <tr>
+    <td style="padding-right:16px;border-right:3px solid #12c2d9;vertical-align:middle">
+      <a href="https://${esc(web)}" target="_blank"><img src="${esc(logo)}" alt="Hype Vision" width="150" style="display:block;border:0;width:150px;height:auto"></a>
+    </td>
+    <td style="padding-left:16px;vertical-align:middle">
+      <div style="font-size:16px;font-weight:bold;color:#0f2a5c">${esc(name)}</div>
+      ${title ? `<div style="color:#12a3b8;font-weight:bold;margin-bottom:6px">${esc(title)}</div>` : ''}
+      ${phone ? `<div><a href="tel:${esc(tel)}" style="color:#1f2937;text-decoration:none">${esc(phone)}</a></div>` : ''}
+      <div><a href="https://${esc(web)}" target="_blank" style="color:#0f2a5c;text-decoration:none;font-weight:bold">${esc(web)}</a></div>
+      ${address ? `<div style="color:#6b7280;font-size:12px;margin-top:4px">${address}</div>` : ''}
+    </td>
+  </tr>
+</table>`;
+}
+function signatureModal(s, onSaved) {
+  const name = s.name || '';
+  modal('İmza · ' + s.email, `<p class="mut" style="margin-top:0">Bu hesaptan giden her mailin altına eklenir. Boş bırakırsan kullanıcının kendi imzası kullanılır.</p>
+    <div class="grid g2"><label>Ad Soyad<input id="sgN" value="${esc(name)}"></label><label>Unvan<input id="sgT" placeholder="ör. Satış Müdürü"></label>
+    <label>Telefon<input id="sgP" placeholder="+90 5xx xxx xx xx"></label><label>Web<input id="sgW" value="hypevisionlab.com"></label></div>
+    <label style="margin-top:10px">Adres (HTML, &lt;br&gt; ile satır)<input id="sgA" value="${esc(SIG_ADDR)}"></label>
+    <div class="row" style="margin-top:10px"><button class="btn sm" id="sgB">↻ Bu bilgilerle Hype Vision imzası oluştur</button></div>
+    <label style="margin-top:12px">İmza HTML<textarea id="sgH" rows="7" style="font:12px ui-monospace,Consolas,monospace">${esc(s.signature || '')}</textarea></label>
+    <div class="preview" id="sgV" style="margin-top:10px"></div>
+    <div class="row" style="margin-top:14px"><button class="btn danger sm" id="sgX">İmzayı kaldır</button><span class="sp"></span><button class="btn pri" id="sgS">Kaydet</button></div>`, b => {
+    const pv = () => b.querySelector('#sgV').innerHTML = b.querySelector('#sgH').value || '<span style="color:#999">İmza yok — kullanıcının imzası kullanılır</span>';
+    b.querySelector('#sgH').oninput = pv; pv();
+    b.querySelector('#sgB').onclick = () => { b.querySelector('#sgH').value = buildSignature({ name: b.querySelector('#sgN').value, title: b.querySelector('#sgT').value, phone: b.querySelector('#sgP').value, web: b.querySelector('#sgW').value, address: b.querySelector('#sgA').value }); pv(); };
+    if (!s.signature) b.querySelector('#sgB').click();
+    const save = v => tryT(async () => { await put('/api/senders/' + s.id, { signature: v, name: b.querySelector('#sgN').value }); closeModal(); toast('İmza kaydedildi'); onSaved?.(); });
+    b.querySelector('#sgS').onclick = () => save(b.querySelector('#sgH').value)();
+    b.querySelector('#sgX').onclick = () => save('')();
+  });
+}
+renderSenders = async function (el) {
+  const [list, st] = await Promise.all([api('/api/senders'), api('/api/sending')]), adm = ME.role === 'admin';
+  const act = list.filter(s => s.active), cap = act.reduce((a, s) => a + s.eff, 0), left = Math.max(0, cap - act.reduce((a, s) => a + s.today, 0));
+  const fullCap = act.reduce((a, s) => a + s.daily, 0), days = cap ? Math.ceil(Math.max(0, st.queued - left) / Math.max(1, cap)) + (st.queued > 0 ? 0 : 0) : 0;
+  el.innerHTML = `<div class="card-h"><h3>Gönderen Gmail hesapları</h3><span class="pill ${act.length ? 'ok' : 'bad'}">${act.length} aktif</span></div>
+    <div class="mini3" style="margin:0 0 14px"><a><b>${cap}</b>Bugünkü kapasite</a><a><b>${left}</b>Bugün kalan</a><a><b>${st.queued}</b>Sırada${st.queued > left && cap ? ` · ~${days + 1} iş günü` : ''}</a></div>
+    <p class="hint">Sistem otomatik planlar: her mail o an en az kullanılmış hesaptan gider, dolan hesap atlanır, takipler ilk maili atan hesaptan aynı zincirde gider. Her hesap kendi ısınmasıyla
+      günde 10'dan başlayıp her gün +3 artar ve <b>Limit</b> değerine kadar çıkar${fullCap > cap ? ` (tam kapasite ${fullCap}/gün)` : ''}. Bir hesaptan 24 saatte 2 mail geri dönerse yalnızca o hesap durur.</p>
+    ${list.length ? `<div class="tw" style="margin-bottom:14px"><table><thead><tr><th>Hesap</th><th>Bugün</th><th>Limit</th><th>İmza</th><th>Aktif</th><th></th></tr></thead><tbody>
+    ${list.map(s => `<tr><td><div class="ent">${avatar(s.name || s.email)}<div><div class="n">${esc(s.email)}</div><small>${esc(s.name || '—')}${s.note ? ' · <span style="color:var(--bad)">' + esc(s.note) + '</span>' : ''}</small></div></div></td>
+      <td><b>${s.today}</b><span class="mut">/${s.eff}</span>${s.eff < s.daily ? ' <span class="pill info">ısınma</span>' : ''}</td>
+      <td>${adm ? `<input type="number" min="5" max="200" value="${s.daily}" data-sd="${s.id}" style="width:72px;height:32px">` : s.daily}</td>
+      <td><button class="btn sm" data-sig="${s.id}">${s.signature ? '✓ Düzenle' : '＋ Ekle'}</button></td>
+      <td>${adm ? `<label class="switch"><input type="checkbox" data-sa="${s.id}" ${s.active ? 'checked' : ''}><i></i></label>` : pill(s.active ? 'aktif' : 'pasif')}</td>
+      <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-st="${s.id}">Test</button>${adm ? ` <button class="icon" data-sx="${s.id}" title="Kaldır">✕</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${list.length && list.every(s => s.daily <= 10) ? '<div class="banner info">Öneri: limitleri 30–40 yap. Isınma modu açık olduğu için hesaplar yine 10\'dan başlayıp günde +3 ile kendiliğinden yükselir; elle artırmana gerek kalmaz.</div>' : ''}
+    ${adm ? `<details ${list.length ? '' : 'open'}><summary class="btn sm" style="list-style:none;display:inline-flex">＋ Hesap ekle</summary>
+      <div class="grid g2" style="margin-top:12px"><label>Gmail / Workspace adresi<input id="nsE" placeholder="ad@hypevisionlab.com" autocomplete="off"></label>
+      <label>Uygulama şifresi (16 hane)<input id="nsP" type="password" placeholder="xxxx xxxx xxxx xxxx" autocomplete="new-password"></label>
+      <label>Gönderen adı<input id="nsN" placeholder="Ad Soyad"></label><label>Günlük limit<input id="nsD" type="number" value="40" min="5" max="200"></label></div>
+      <div class="row" style="margin-top:12px"><button class="btn pri" id="nsGo">Bağlan ve test maili gönder</button></div></details>` : ''}`;
+  el.onclick = tryT(async e => {
+    const g = e.target.closest('[data-sig]'); if (g) return signatureModal(list.find(s => s.id === +g.dataset.sig), () => renderSenders(el));
+    const t = e.target.closest('[data-st]'); if (t) return busyBtn(t, async () => { const r = await post(`/api/senders/${t.dataset.st}/test`, {}); toast('Test maili (imzalı) gönderildi → ' + r.to); }, '…');
+    const x = e.target.closest('[data-sx]'); if (x && confirm('Hesap kaldırılsın mı? (Gönderim geçmişi olan hesap pasife alınır)')) { await del('/api/senders/' + x.dataset.sx); renderSenders(el); }
+  });
+  el.onchange = tryT(async e => {
+    const a = e.target.closest('[data-sa]'); if (a) { await put('/api/senders/' + a.dataset.sa, { active: a.checked }); toast(a.checked ? 'Hesap aktif' : 'Hesap pasif'); renderSenders(el); }
+    const d = e.target.closest('[data-sd]'); if (d) { await put('/api/senders/' + d.dataset.sd, { daily: +d.value }); toast('Limit kaydedildi'); renderSenders(el); }
+  });
+  if ($('nsGo')) $('nsGo').onclick = ev => busyBtn(ev.currentTarget, async () => {
+    await post('/api/senders', { email: $('nsE').value, pass: $('nsP').value, name: $('nsN').value, daily: $('nsD').value });
+    toast('Hesap eklendi ✓ test maili gönderildi'); renderSenders(el); renderDomain($('dhCard'));
+  }, 'Bağlanıyor');
+};
+
+// Panel: RocketReach bütçesi + OpenAI maliyeti
+async function usageCard(el) {
+  if (!el) return;
+  try {
+    const u = await api('/api/usage'), b = u.rr || {}, today = u.ai[0] || { usd: 0, web: 0, calls: 0, by: {} };
+    const m30 = u.ai.reduce((a, d) => a + (d.usd || 0), 0), by = Object.entries(today.by || {}).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const p = (a, c) => Math.min(100, c ? a / c * 100 : 0);
+    el.innerHTML = `<div class="card-h"><h3>Kullanım ve bütçe</h3><span class="mut" style="font-size:12px">bugün</span></div>
+      ${b.daily ? `<p style="margin:0 0 4px;font-weight:600;font-size:13px">RocketReach mail sorgusu</p>
+      <div class="quota"><span>Bugün (günlük pay)</span><span class="${b.today >= b.daily ? 'err' : 'mut'}">${b.today} / ${b.daily}</span><div class="bar"><i style="width:${p(b.today, b.daily)}%"></i></div>
+      <span>Bu ay</span><span class="mut">${b.month} / ${b.cap} · ${b.daysLeft} gün kaldı</span><div class="bar"><i style="width:${p(b.month, b.cap)}%"></i></div></div>` : ''}
+      <p style="margin:6px 0 4px;font-weight:600;font-size:13px">OpenAI</p>
+      <div class="quota"><span>Bugün</span><span class="mut">$${(today.usd || 0).toFixed(2)} ·${today.calls || 0} çağrı · ${today.web || 0} web araması</span>
+      <span>Son 30 gün</span><span class="mut">$${m30.toFixed(2)}</span></div>
+      ${by.length ? `<div class="chips" style="margin-top:8px">${by.map(([k, v]) => `<span class="chip" style="height:24px;font-size:11.5px">${esc(k)} $${v.toFixed(2)}</span>`).join('')}</div>` : ''}`;
+  } catch (e) { el.innerHTML = '<h3>Kullanım</h3><p class="mut">' + esc(e.message) + '</p>'; }
+}
+
+// Entegrasyonlar: otomatik günlük kampanya + RocketReach aylık bütçe
+async function autoCard(el) {
+  const [a, u] = await Promise.all([api('/api/auto-daily'), api('/api/usage')]), adm = ME.role === 'admin', dis = adm ? '' : 'disabled';
+  el.innerHTML = `<div class="card-h"><h3>🤖 Otomatik günlük kampanya</h3>${a.enabled ? '<span class="pill ok">açık</span>' : '<span class="pill">kapalı</span>'}</div>
+    <p class="hint">Her iş günü belirlenen saatte AI şirket profiline göre yeni bir sektör + bölge seçer, firmaları bulur, her firmadan en uygun yetkiliyi (LinkedIn profiliyle) çıkarır. Akşam 18:00'de bulunanların LinkedIn listesi Telegram'a gelir. Mail sorgusu günlük RocketReach bütçesi içinde kalır.</p>
+    <div class="toggle-row"><div><b>Açık</b><small>Her iş günü bir kampanya</small></div><label class="switch"><input type="checkbox" id="adE" ${a.enabled ? 'checked' : ''} ${dis}><i></i></label></div>
+    <div class="toggle-row"><div><b>Mailleri de bul</b><small>Kapalıysa sadece firmalar + yetkililer + LinkedIn (RocketReach mail kotası harcanmaz)</small></div><label class="switch"><input type="checkbox" id="adL" ${a.lookup ? 'checked' : ''} ${dis}><i></i></label></div>
+    <div class="toggle-row"><div><b>Sadece Türkiye</b><small>Kapalıysa yurt dışı önerileri de sıraya girer</small></div><label class="switch"><input type="checkbox" id="adT" ${a.tr_only ? 'checked' : ''} ${dis}><i></i></label></div>
+    <div class="grid g3" style="margin-top:8px"><label>Firma sayısı<input type="number" id="adC" value="${a.count}" min="5" max="60" ${dis}></label><label>Saat<input type="number" id="adH" value="${a.hour}" min="6" max="16" ${dis}></label>
+      <label>RocketReach aylık mail sorgusu bütçesi<input type="number" id="adB" value="${u.rr_month_budget || u.rr?.cap || 5000}" min="0" ${dis}></label></div>
+    <p class="mut" style="font-size:12px;margin:8px 0 0">Bütçe ay sonuna eşit yayılır: bugünkü pay <b>${u.rr?.daily ?? '—'}</b> sorgu. Son otomatik kampanya: ${a.list?.[0] ? esc(a.list[0].name) : '—'}</p>
+    <div class="row" style="margin-top:12px">${adm ? '<button class="btn pri" id="adS">Kaydet</button>' : ''}<button class="btn" id="adR">Şimdi bir kampanya başlat</button></div>`;
+  if (adm) $('adS').onclick = tryT(async () => {
+    await put('/api/auto-daily', { enabled: $('adE').checked, lookup: $('adL').checked, tr_only: $('adT').checked, count: +$('adC').value, hour: +$('adH').value });
+    await put('/api/usage', { rr_month_budget: +$('adB').value }); toast('Kaydedildi'); autoCard(el);
+  });
+  $('adR').onclick = e => busyBtn(e.currentTarget, async () => { const r = await post('/api/auto-daily/run'); toast(`Başladı: ${r.idea.sector}${r.idea.location ? ' · ' + r.idea.location : ''}`); location.hash = `c/${r.id}/companies`; }, 'AI seçiyor');
+}
+
+// Sinyaller: puanlı
+PAGES.signals = tryT(async () => {
+  await loadCamps();
+  const list = await api('/api/signals');
+  const sc = n => n >= 8 ? 'ok' : n >= 6 ? 'warn' : '';
+  main.innerHTML = head('Sinyaller', 'AI günde 3 kez (09:00, 13:00, 17:00) aktif kampanyalarının sektör ve bölgesinde son haberleri tarar ve her sinyale satış fırsatı puanı verir. 8 ve üstü sinyaller Telegram\'a "güçlü sinyal" olarak düşer.',
+    `<select id="sgC" style="width:auto">${campOpts('Sıradaki kampanya')}</select><button class="btn pri" id="sgScan">📰 Şimdi tara</button>`) +
+  (list.length ? `<div class="ideas">${list.map(s => `<div class="idea" data-sg="${s.id}"><div class="idea-top"><span class="pill ${sc(s.score)}" style="font-size:12px">★ ${s.score || '?'}/10</span><span class="pill">${SK[s.kind] || '📰'} ${esc(s.kind || 'haber')}</span><span class="mut">${esc(s.date || '')}</span></div>
+    <div class="ent">${favicon(s.domain)}<div><h4>${esc(s.company)}</h4><small class="mut">${esc(s.city || '')}${s.campaign ? ' · ' + esc(s.campaign) : ''}</small></div></div>
+    <p style="color:var(--txt)">${esc(s.event)}</p>${s.why ? `<p><b>Neden şimdi:</b> ${esc(s.why)}</p>` : ''}${s.angle ? `<p><b>Nasıl girilir:</b> ${esc(s.angle)}</p>` : ''}
+    ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="font-size:12px">Haberi aç ↗</a>` : ''}
+    <div class="row">${s.status === 'eklendi' ? pill('kampanyaya eklendi') : `<button class="btn sm pri" data-sa="${s.id}">Kampanyaya ekle + yetkiliyi bul</button>`}<button class="btn sm ghost" data-sh="${s.id}">Gizle</button></div></div>`).join('')}</div>`
+  : empty('Henüz sinyal yok', 'Tarama günde 3 kez otomatik çalışır. Beklemek istemiyorsan "Şimdi tara".'));
+  $('sgScan').onclick = e => busyBtn(e.currentTarget, async () => { const r = await post('/api/signals/scan', { campaign_id: $('sgC').value || null }); toast(r.queued ? `${r.queued} kampanya taranıyor — güçlü sinyaller Telegram'a gelir` : 'Aktif kampanya yok'); }, 'Kuyruğa');
+  main.onclick = tryT(async e => {
+    const a = e.target.closest('[data-sa]'); if (a) { await post(`/api/signals/${a.dataset.sa}/add`, { campaign_id: $('sgC').value || null }); toast('Firma eklendi; yetkili ve santral numarası aranıyor'); return PAGES.signals(); }
+    const h = e.target.closest('[data-sh]'); if (h) { await put('/api/signals/' + h.dataset.sh, { status: 'gizli' }); h.closest('.idea').remove(); }
+  });
 });
 
 boot();

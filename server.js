@@ -11,6 +11,9 @@ const ai = require('./lib/ai');
 const mailer = require('./lib/mailer');
 const worker = require('./lib/worker');
 const { event, sendTelegram } = require('./lib/notify');
+const verifier = require('./lib/verify');
+const inbox = require('./lib/inbox');
+const insights = require('./lib/insights');
 
 const PORT = process.env.PORT || 5230;
 if (setting('tpl_seed') !== 'v1') {
@@ -92,7 +95,7 @@ app.put('/api/settings', auth, admin, (req, res) => {
   for (const [k, key] of [['rr_key', 'rr_api_key'], ['openai_key', 'openai_key'], ['tg_token', 'tg_token'], ['gmail_pass', 'gmail_pass']])
     if (b[k]) setSetting(key, k === 'gmail_pass' ? b[k].replace(/\s+/g, '') : b[k].trim());
   for (const k of ['openai_model', 'gmail_user', 'from_name', 'tg_chat', 'tg_mute']) if (b[k] !== undefined) setSetting(k, String(b[k]).trim());
-  if (b.gmail_user !== undefined || b.gmail_pass) setSetting('sending_paused', '0');
+  if (b.gmail_user !== undefined || b.gmail_pass) { setSetting('sending_paused', '0'); syncLegacySender(); }
   if (b.sending_paused !== undefined) setSetting('sending_paused', b.sending_paused ? '1' : '0');
   if (b.schedule) {
     const s = { ...mailer.SCHED_DEF, ...b.schedule };
@@ -104,6 +107,8 @@ app.put('/api/settings', auth, admin, (req, res) => {
 });
 app.get('/api/account', auth, wrap(async (req, res) => { const { status, body } = await rr.rr('/account/'); res.status(status).json(body); }));
 app.post('/api/test/gmail', auth, wrap(async (req, res) => res.json(await mailer.testGmail(req.body.to, req.user.signature))));
+// Eski tek-hesap ayarı kaydedilince gönderen listesine de yansıt
+const syncLegacySender = () => { if (setting('gmail_user') && setting('gmail_pass')) run("INSERT INTO senders(email,pass,name) VALUES(?,?,?) ON CONFLICT(email) DO UPDATE SET pass=excluded.pass, name=excluded.name, active=1, note=''", setting('gmail_user').toLowerCase(), setting('gmail_pass'), setting('from_name') || ''); };
 app.post('/api/test/telegram', auth, wrap(async (req, res) => {
   await sendTelegram('✅ <b>Lead-AI</b> Telegram bildirimleri çalışıyor.', { token: req.body.token || setting('tg_token'), chat: req.body.chat || setting('tg_chat') });
   res.json({ ok: true });
@@ -129,7 +134,7 @@ app.post('/api/project/research', auth, wrap(async (req, res) => {
 }));
 
 // ---------------- Campaigns ----------------
-const CAMP_FIELDS = ['sector', 'location', 'name', 'status', 'brief', 'offer', 'problem', 'clients', 'positive', 'negative', 'keywords', 'geography', 'size', 'roles', 'titles', 'instructions', 'followups', 'auto_lookup', 'auto_draft', 'auto_send'];
+const CAMP_FIELDS = ['kind', 'sector', 'location', 'name', 'status', 'brief', 'offer', 'problem', 'clients', 'positive', 'negative', 'keywords', 'geography', 'size', 'roles', 'titles', 'instructions', 'followups', 'auto_lookup', 'auto_draft', 'auto_send'];
 const campStats = `(SELECT count(*) FROM companies WHERE campaign_id=c.id) AS companies, (SELECT count(*) FROM leads WHERE campaign_id=c.id) AS leads,
   (SELECT count(*) FROM leads l JOIN contacts k ON k.id=l.contact_id WHERE l.campaign_id=c.id AND k.email<>'') AS with_email,
   (SELECT count(*) FROM outbox WHERE campaign_id=c.id AND status='gönderildi') AS sent,
@@ -159,7 +164,7 @@ app.delete('/api/campaigns/:id', auth, (req, res) => {
 });
 // Hızlı kampanya: sektör ve/veya konum yeter; AI hedeflemeyi doldurur, firma aramasını hemen başlatır
 app.post('/api/campaigns/quick', auth, wrap(async (req, res) => {
-  let { sector = '', location = '', country = 'Türkiye', size = '', note = '', count = 20, people = true, lookup = true, titles = '' } = req.body;
+  let { sector = '', location = '', country = 'Türkiye', size = '', note = '', count = 20, people = true, lookup = true, titles = '', kind = '' } = req.body;
   if (country && country !== 'Türkiye') location = [location, country].filter(Boolean).join(', ');
   if (!sector.trim() && !location.trim()) throw Object.assign(new Error('Sektör veya konumdan en az birini yaz'), { status: 400 });
   const brief = [sector ? sector + ' sektöründeki' : 'Üretim yapan', 'firmalar / fabrikalar', location ? '(' + location + ')' : '', size ? '— ' + size : '', note].filter(Boolean).join(' ');
@@ -167,7 +172,8 @@ app.post('/api/campaigns/quick', auth, wrap(async (req, res) => {
   try { s = await ai.suggestCampaign(brief); } catch (e) { console.error('suggest', e.message); }
   const name = [sector || 'Fabrikalar', location].filter(Boolean).join(' · ');
   if (titles) s.titles = String(titles).split(',').map(x => x.trim()).filter(Boolean).concat(s.titles || []);
-  const v = campVals({ ...s, name, brief, sector, location, geography: location || country || 'Türkiye', size: size || s.size || '', auto_lookup: lookup ? 1 : 0 });
+  if (kind === 'partner') s.titles = ['Genel Müdür', 'Kurucu', 'Kurucu Ortak', 'İş Geliştirme Müdürü', 'Satış Müdürü', 'Managing Director', 'Founder', 'Business Development'];
+  const v = campVals({ ...s, kind, name, brief, sector, location, geography: location || country || 'Türkiye', size: size || s.size || '', auto_lookup: lookup ? 1 : 0 });
   const id = Number(run(`INSERT INTO campaigns(${v.map(x => x[0]).join(',')},user_id) VALUES(${v.map(() => '?').join(',')},?)`, ...v.map(x => x[1]), req.user.id).lastInsertRowid);
   const n = Math.min(200, Math.max(5, +count || 20));
   for (let left = n, i = 0; left > 0; left -= 20, i++) worker.enqueue('ai_companies', { count: Math.min(20, left), people: !!people, n: Date.now() + i }, id, req.user.id);
@@ -482,7 +488,7 @@ app.post('/api/outbox/compose', auth, (req, res) => { // aynı metni (şablon) s
 });
 app.get('/api/maillist', auth, (req, res) => {
   const { campaign, q, state } = req.query; const a = [];
-  let sql = `SELECT c.id, c.name, c.title, c.company, c.domain, c.location, c.email, c.email_grade, c.linkedin,
+  let sql = `SELECT c.id, c.name, c.title, c.company, c.domain, c.location, c.email, c.email_grade, c.email_check, c.linkedin,
     (SELECT group_concat(k.name, ', ') FROM leads l JOIN campaigns k ON k.id=l.campaign_id WHERE l.contact_id=c.id) AS campaigns,
     (SELECT o.status FROM outbox o WHERE o.contact_id=c.id ORDER BY o.id DESC LIMIT 1) AS last_status,
     (SELECT max(o.sent_at) FROM outbox o WHERE o.contact_id=c.id AND o.status='gönderildi') AS last_sent,
@@ -497,9 +503,9 @@ app.get('/api/maillist', auth, (req, res) => {
   res.json(rows);
 });
 // Kişi başına şablon seçerek toplu kuyruk. Aynı kişiye 60 gün içinde ilk mail tekrar gitmez.
-app.post('/api/outbox/compose-multi', auth, (req, res) => {
-  const { items = [], send = true, campaign_id = null, force = false } = req.body;
-  const out = { added: 0, skipped: [] };
+app.post('/api/outbox/compose-multi', auth, wrap(async (req, res) => {
+  const { items = [], send = true, campaign_id = null, force = false, personal = false } = req.body;
+  const out = { added: 0, skipped: [], risky: 0 };
   const since = new Date(Date.now() - 60 * 864e5).toISOString();
   for (const it of items) {
     const c = get('SELECT * FROM contacts WHERE id=?', +it.contact_id), t = get('SELECT * FROM templates WHERE id=?', +it.template_id);
@@ -509,14 +515,18 @@ app.post('/api/outbox/compose-multi', auth, (req, res) => {
     if (!force && get("SELECT 1 FROM outbox WHERE lower(to_email)=? AND step=0 AND (status IN ('sırada','taslak') OR (status='gönderildi' AND sent_at>=?))", c.email.toLowerCase(), since)) {
       out.skipped.push({ id: c.id, why: 'son 60 günde zaten mail gitti / kuyrukta' }); continue;
     }
+    const v = await verifier.checkContact(c); // adres doğrulama
+    if (v.status === 'geçersiz') { out.skipped.push({ id: c.id, why: 'adres geçersiz (' + v.reason + ')' }); continue; }
+    if (v.status === 'riskli') out.risky++;
     const camp = campaign_id || get('SELECT campaign_id FROM leads WHERE contact_id=? ORDER BY created DESC LIMIT 1', c.id)?.campaign_id || null;
-    run('INSERT INTO outbox(campaign_id,contact_id,step,to_email,subject,body,status,user_id) VALUES(?,?,0,?,?,?,?,?)', camp, c.id, c.email, t.subject, t.body, send ? 'sırada' : 'taslak', req.user.id);
+    run('INSERT INTO outbox(campaign_id,contact_id,step,to_email,subject,body,status,user_id,template_id,personal) VALUES(?,?,0,?,?,?,?,?,?,?)',
+      camp, c.id, c.email, t.subject, t.body, send ? 'sırada' : 'taslak', req.user.id, t.id, personal ? 1 : 0);
     if (camp) run('UPDATE leads SET stage=? WHERE campaign_id=? AND contact_id=?', send ? 'sırada' : 'taslak', camp, c.id);
     out.added++;
   }
   mailer.tick();
   res.json(out);
-});
+}));
 app.get('/api/outbox', auth, (req, res) => {
   const { status, campaign } = req.query; let sql = `SELECT o.*, c.name, c.company, c.title, k.name AS campaign FROM outbox o LEFT JOIN contacts c ON c.id=o.contact_id
     LEFT JOIN campaigns k ON k.id=o.campaign_id WHERE 1=1`; const a = [];
@@ -545,7 +555,7 @@ app.get('/api/sending', auth, (req, res) => res.json({
   ...mailer.scheduleState(),
   counts: Object.fromEntries(all('SELECT status, count(*) n FROM outbox GROUP BY status').map(r => [r.status, r.n])),
 }));
-app.post('/api/sending/check-replies', auth, wrap(async (req, res) => { await mailer.checkReplies(); res.json({ ok: true }); }));
+app.post('/api/sending/check-replies', auth, wrap(async (req, res) => res.json({ ok: true, fresh: await inbox.checkReplies() })));
 
 // Eski "şablonlu gönder" sayfası için şablonlar
 app.get('/api/templates', auth, (req, res) => res.json(all('SELECT * FROM templates ORDER BY id DESC')));
@@ -609,11 +619,139 @@ app.get('/api/stats', auth, (req, res) => res.json({
   jobs: get("SELECT count(*) n FROM jobs WHERE state IN ('queued','running','paused')").n,
   limits: { lookup: Math.ceil(rr.remaining('lookup') / 60), arama: Math.ceil(rr.remaining('arama') / 60) },
   sending: mailer.scheduleState(),
-  setup: { rr: !!setting('rr_api_key'), openai: !!setting('openai_key'), gmail: !!(setting('gmail_user') && setting('gmail_pass')), telegram: !!(setting('tg_token') && setting('tg_chat')), project: !!ai.project().company },
+  replies: get("SELECT count(*) n FROM replies WHERE status='yeni' AND label IN ('ilgileniyor','soru','yanlış kişi','sonra yaz')").n,
+  callsToday: insights.callbacksDue().length,
+  setup: { rr: !!setting('rr_api_key'), openai: !!setting('openai_key'), gmail: mailer.senders().length > 0, telegram: !!(setting('tg_token') && setting('tg_chat')), project: !!ai.project().company },
 }));
 app.get('/api/events', auth, (req, res) => {
   const c = req.query.campaign;
   res.json(c ? all('SELECT * FROM events WHERE campaign_id=? ORDER BY id DESC LIMIT 200', +c) : all('SELECT e.*, k.name AS campaign FROM events e LEFT JOIN campaigns k ON k.id=e.campaign_id ORDER BY e.id DESC LIMIT 200'));
+});
+
+// ================= v9: gönderenler, alan adı, yanıtlar, kişisel cümle, şablon istatistik, rapor, sinyaller, arama listesi =================
+const maskPass = p => p ? '••••' + String(p).slice(-3) : '';
+app.get('/api/senders', auth, (req, res) => {
+  const st = Object.fromEntries(mailer.senderStats().map(s => [s.id, s]));
+  res.json(all('SELECT id,email,pass,name,daily,active,note,created FROM senders ORDER BY id').map(s => ({ ...s, pass: maskPass(s.pass), today: st[s.id]?.today || 0, eff: st[s.id]?.daily || 0 })));
+});
+app.post('/api/senders', auth, admin, wrap(async (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase(), pass = String(req.body.pass || '').replace(/\s+/g, '');
+  if (!/@/.test(email) || pass.length < 12) throw Object.assign(new Error('Gmail adresi ve 16 haneli uygulama şifresi gerekli'), { status: 400 });
+  const s = { id: 0, email, pass, name: req.body.name || '' };
+  await mailer.testSender(s, email, req.user.signature); // önce bağlantıyı doğrula (kendine test maili)
+  run('INSERT INTO senders(email,pass,name,daily) VALUES(?,?,?,?) ON CONFLICT(email) DO UPDATE SET pass=excluded.pass, name=excluded.name, active=1, note=\'\'',
+    email, pass, req.body.name || '', Math.max(5, Math.min(200, +req.body.daily || 40)));
+  if (!setting('gmail_user')) { setSetting('gmail_user', email); setSetting('gmail_pass', pass); }
+  setSetting('sending_paused', '0');
+  res.json({ ok: true });
+}));
+app.put('/api/senders/:id', auth, admin, (req, res) => {
+  const { name, daily, active, pass } = req.body, id = +req.params.id;
+  if (name !== undefined) run('UPDATE senders SET name=? WHERE id=?', name, id);
+  if (daily !== undefined) run('UPDATE senders SET daily=? WHERE id=?', Math.max(5, Math.min(200, +daily || 40)), id);
+  if (active !== undefined) run("UPDATE senders SET active=?, note='' WHERE id=?", active ? 1 : 0, id);
+  if (pass) run('UPDATE senders SET pass=? WHERE id=?', String(pass).replace(/\s+/g, ''), id);
+  res.json({ ok: true });
+});
+app.delete('/api/senders/:id', auth, admin, (req, res) => { run('UPDATE senders SET active=0 WHERE id=?', +req.params.id); run('DELETE FROM senders WHERE id=? AND NOT EXISTS(SELECT 1 FROM outbox WHERE sender_id=?)', +req.params.id, +req.params.id); res.json({ ok: true }); });
+app.post('/api/senders/:id/test', auth, wrap(async (req, res) => {
+  const s = get('SELECT * FROM senders WHERE id=?', +req.params.id); if (!s) throw Object.assign(new Error('Hesap yok'), { status: 404 });
+  res.json(await mailer.testSender(s, req.body.to, req.user.signature));
+}));
+app.get('/api/domain-health', auth, wrap(async (req, res) => {
+  const d = req.query.domain || (mailer.senders()[0]?.email || '').split('@')[1] || ai.project().website;
+  res.json(await verifier.domainHealth(d));
+}));
+
+// ---- Yanıtlar ----
+app.get('/api/replies', auth, (req, res) => {
+  const { label, status } = req.query; let sql = `SELECT r.*, c.name, c.title, c.company, c.domain, k.name AS campaign, s.email AS sender FROM replies r
+    LEFT JOIN contacts c ON c.id=r.contact_id LEFT JOIN campaigns k ON k.id=r.campaign_id LEFT JOIN senders s ON s.id=r.sender_id WHERE 1=1`; const a = [];
+  if (label) { sql += ' AND r.label=?'; a.push(label); }
+  if (status) { sql += ' AND r.status=?'; a.push(status); }
+  res.json({ list: all(sql + ' ORDER BY r.received_at DESC LIMIT 500', ...a), counts: all("SELECT label, status, count(*) n FROM replies GROUP BY label, status") });
+});
+app.get('/api/replies/:id', auth, (req, res) => {
+  const r = get('SELECT r.*, c.name, c.title, c.company, c.domain, c.linkedin, c.phones FROM replies r LEFT JOIN contacts c ON c.id=r.contact_id WHERE r.id=?', +req.params.id);
+  if (!r) return res.status(404).json({ error: 'Yok' });
+  r.thread = all("SELECT id, step, subject, body, sent_at, status FROM outbox WHERE contact_id=? AND status='gönderildi' ORDER BY sent_at", r.contact_id);
+  res.json(r);
+});
+app.post('/api/replies/:id/send', auth, wrap(async (req, res) => res.json(await inbox.sendReply(+req.params.id, req.body.text, req.user.id))));
+app.put('/api/replies/:id', auth, (req, res) => {
+  const { status, label, draft } = req.body;
+  if (status) run('UPDATE replies SET status=? WHERE id=?', status, +req.params.id);
+  if (draft !== undefined) run('UPDATE replies SET draft=? WHERE id=?', draft, +req.params.id);
+  if (label && ai.LABELS.includes(label)) { const rep = get('SELECT * FROM replies WHERE id=?', +req.params.id); inbox.applyLabel(rep, { label, summary: rep.summary.replace(/ · .*$/, ''), draft: rep.draft, return_date: rep.return_date }); }
+  res.json({ ok: true });
+});
+app.post('/api/replies/:id/reclassify', auth, wrap(async (req, res) => { await inbox.classify(+req.params.id); res.json(get('SELECT * FROM replies WHERE id=?', +req.params.id)); }));
+app.post('/api/inbox/check', auth, wrap(async (req, res) => res.json({ fresh: await inbox.checkReplies() })));
+
+// ---- Kişisel ilk cümle önizleme ----
+app.post('/api/ai/opener', auth, wrap(async (req, res) => {
+  const c = get('SELECT * FROM contacts WHERE id=?', +req.body.contact_id); if (!c) throw Object.assign(new Error('Kişi yok'), { status: 404 });
+  if (c.opener && !req.body.fresh) return res.json({ opener: c.opener, cached: true });
+  const r = await ai.opener(c, req.body.lang || 'Türkçe');
+  run('UPDATE contacts SET opener=? WHERE id=?', r.opener || '', c.id);
+  res.json(r);
+}));
+
+// ---- Şablon performansı / haftalık rapor ----
+app.get('/api/templates/stats', auth, (req, res) => res.json(insights.templateStats()));
+app.get('/api/report/weekly', auth, (req, res) => res.json({ text: insights.weekly() }));
+app.post('/api/report/weekly', auth, wrap(async (req, res) => res.json({ text: await insights.sendWeekly(true) })));
+
+// ---- Sinyaller (tetikleyici haberler) ----
+app.get('/api/signals', auth, (req, res) => {
+  const { campaign, status } = req.query; let sql = 'SELECT s.*, k.name AS campaign FROM signals s LEFT JOIN campaigns k ON k.id=s.campaign_id WHERE 1=1'; const a = [];
+  if (campaign) { sql += ' AND s.campaign_id=?'; a.push(+campaign); }
+  sql += status ? ' AND s.status=?' : " AND s.status<>'gizli'"; if (status) a.push(status);
+  res.json(all(sql + ' ORDER BY s.date DESC, s.id DESC LIMIT 300', ...a));
+});
+app.post('/api/signals/scan', auth, (req, res) => {
+  const ids = req.body.campaign_id ? [+req.body.campaign_id] : all("SELECT id FROM campaigns WHERE status='aktif' AND kind<>'partner'").map(c => c.id);
+  let n = 0; for (const id of ids) n += worker.enqueue('signals', { campaign_id: id, t: Date.now() }, id, req.user.id) ? 1 : 0;
+  worker.loop(); res.json({ queued: n });
+});
+app.post('/api/signals/:id/add', auth, (req, res) => {
+  const s = get('SELECT * FROM signals WHERE id=?', +req.params.id); if (!s) return res.status(404).json({ error: 'Yok' });
+  const camp = +req.body.campaign_id || s.campaign_id;
+  const r = run('INSERT OR IGNORE INTO companies(campaign_id,name,domain,city,reason,score) VALUES(?,?,?,?,?,9)', camp, s.company, s.domain || s.company.toLowerCase(), s.city || '', '📰 ' + s.event);
+  const co = get('SELECT id FROM companies WHERE campaign_id=? AND domain=?', camp, s.domain || s.company.toLowerCase());
+  if (co) { worker.enqueue('company_people', { company_id: co.id }, camp, req.user.id); worker.enqueue('company_contact', { company_id: co.id }, camp, req.user.id); }
+  run("UPDATE signals SET status='eklendi' WHERE id=?", s.id); worker.loop();
+  res.json({ ok: true, added: r.changes });
+});
+app.put('/api/signals/:id', auth, (req, res) => { run('UPDATE signals SET status=? WHERE id=?', req.body.status || 'gizli', +req.params.id); res.json({ ok: true }); });
+
+// ---- Arama listesi (firma santrali + varsa yetkili telefonu) ----
+app.get('/api/calls', auth, (req, res) => {
+  const { campaign, status, q } = req.query; const a = [];
+  let sql = `SELECT co.*, k.name AS campaign,
+    (SELECT json_object('id',c.id,'name',c.name,'title',c.title,'email',c.email,'phones',c.phones,'linkedin',c.linkedin) FROM leads l JOIN contacts c ON c.id=l.contact_id WHERE l.company_id=co.id ORDER BY (c.phones<>'') DESC LIMIT 1) AS person
+    FROM companies co LEFT JOIN campaigns k ON k.id=co.campaign_id WHERE 1=1`;
+  if (campaign) { sql += ' AND co.campaign_id=?'; a.push(+campaign); }
+  if (status === 'bekleyen') sql += " AND co.call_status IN ('','ulaşılamadı')";
+  else if (status === 'bugün') { sql += " AND co.call_status='geri ara' AND co.callback_at<=?"; a.push(new Date(mailer.nowTR().date + 'T23:59:59+03:00').toISOString()); }
+  else if (status) { sql += ' AND co.call_status=?'; a.push(status); }
+  if (q) { sql += ' AND (co.name LIKE ? OR co.city LIKE ? OR co.sector LIKE ?)'; a.push(...Array(3).fill('%' + q + '%')); }
+  res.json(all(sql + " ORDER BY CASE co.call_status WHEN 'geri ara' THEN 0 WHEN '' THEN 1 WHEN 'ulaşılamadı' THEN 2 ELSE 3 END, co.callback_at, (co.phone='') , co.score DESC LIMIT 1000", ...a));
+});
+app.post('/api/companies/contact-info', auth, (req, res) => {
+  let n = 0;
+  for (const id of req.body.ids || []) { const co = get('SELECT id,campaign_id,phone FROM companies WHERE id=?', +id); if (co && (!co.phone || req.body.force)) n += worker.enqueue('company_contact', { company_id: co.id, ...(req.body.force ? { force: 1 } : {}) }, co.campaign_id, req.user.id) ? 1 : 0; }
+  worker.loop(); res.json({ queued: n });
+});
+const CALL_ST = ['', 'arandı', 'ulaşılamadı', 'geri ara', 'görüşüldü', 'toplantı', 'ilgisiz', 'yanlış numara'];
+app.put('/api/companies/:id/call', auth, (req, res) => {
+  const { call_status = '', call_note, callback_at, phone } = req.body, id = +req.params.id;
+  if (!CALL_ST.includes(call_status)) return res.status(400).json({ error: 'Geçersiz durum' });
+  run('UPDATE companies SET call_status=?, called_at=CASE WHEN ?<>\'\' THEN ? ELSE called_at END, callback_at=?, call_note=COALESCE(?,call_note), phone=COALESCE(?,phone) WHERE id=?',
+    call_status, call_status, new Date().toISOString(), call_status === 'geri ara' ? (callback_at || null) : null, call_note ?? null, phone ?? null, id);
+  const co = get('SELECT * FROM companies WHERE id=?', id);
+  if (['görüşüldü', 'toplantı'].includes(call_status)) event('reply', `📞 ${call_status.toUpperCase()}: ${co.name}${co.call_note ? '\n' + co.call_note : ''}`, co.campaign_id);
+  res.json({ ok: true });
 });
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Bulunamadı' }));
@@ -621,5 +759,5 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Bulunamadı' }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res, p) => res.setHeader('Cache-Control', /\.(html|js|css|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=604800') }));
 app.listen(PORT, () => {
   console.log(`Lead-AI: http://localhost:${PORT}`);
-  worker.start(); mailer.start();
+  worker.start(); mailer.start(); inbox.start(); insights.start();
 });

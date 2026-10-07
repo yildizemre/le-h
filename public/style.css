@@ -253,3 +253,6 @@ details.adv summary{cursor:pointer;color:var(--mut);font-weight:600;font-size:13
   .tbl tr{position:relative;padding:12px 12px 12px 44px;border-bottom:1px solid var(--line)}.tbl tbody tr:last-child{border-bottom:0}
   .tbl td{border:0;padding:3px 0}.tbl td.c{position:absolute;left:14px;top:16px;width:auto;padding:0}
 }
+
+.badge.hot{background:var(--ok);color:#fff;box-shadow:none}
+nav#nav a{padding:6px 10px}.navh{padding:11px 10px 3px}

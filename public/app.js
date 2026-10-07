@@ -90,7 +90,7 @@ async function badges() {
   try {
     const s = await api('/api/stats');
     $('bOut').textContent = s.drafts ? s.drafts : ''; $('bOut').title = 'taslak';
-    $('bQ').textContent = s.tasks + s.jobs || '';
+    $('bQ').textContent = s.tasks + s.jobs || ''; if ($('bR')) $('bR').textContent = s.replies || ''; if ($('bCall')) $('bCall').textContent = s.callsToday || '';
     const lim = Math.max(s.limits.lookup, s.limits.arama);
     $('tbLimit').innerHTML = lim ? `<span class="pill warn">RR limit ${lim} dk</span>` : '';
   } catch {}
@@ -111,7 +111,7 @@ $('tabbar').onclick = e => { const a = e.target.closest('a[data-p]'); if (!a) re
 $('nav').onclick = e => { const a = e.target.closest('a[data-p]'); if (a) { location.hash = a.dataset.p; drawer(false); } };
 addEventListener('hashchange', () => ME && route());
 function markNav() {
-  let h = decodeURIComponent(location.hash.slice(1) || 'dash'); if (h.startsWith('c/')) h = 'campaigns'; if (h.startsWith('templates/')) h = 'templates';
+  let h = decodeURIComponent(location.hash.slice(1) || 'dash'); if (h.startsWith('c/')) h = 'campaigns'; h = h.replace(/^(templates|replies|calls)\/.*$/, '$1');
   document.querySelectorAll('#nav a, #tabbar a').forEach(a => a.classList.toggle('on', h === a.dataset.p || h.startsWith(a.dataset.p + '/') || (a.dataset.p === 'contacts' && h === 'favs') || (a.dataset.p === 'search' && h === 'history')));
 }
 let timer;
@@ -204,11 +204,13 @@ async function companyModal(id, campId, onChange) {
   const co = await api('/api/companies/' + id);
   modal(co.name, `<p class="mut" style="margin-top:0"><a href="https://${esc(co.domain)}" target="_blank" rel="noopener">${esc(co.domain)}</a> · ${esc(co.city || '')} · ${esc(co.sector || '')}${co.size ? ' · ' + esc(co.size) : ''}</p>
     ${co.reason ? `<p style="margin-top:0">${esc(co.reason)}</p>` : ''}
+    <div class="row" style="margin-bottom:12px">${co.phone ? `<a class="btn sm pri" href="tel:${esc(String(co.phone).replace(/[^\d+]/g, ''))}">📞 ${esc(co.phone)}</a>` : '<button class="btn sm" id="cmTel">📞 Santral numarasını bul</button>'}${co.gen_email ? `<a class="btn sm" href="mailto:${esc(co.gen_email)}">${esc(co.gen_email)}</a>` : ''}${co.call_status ? pill(co.call_status) : ''}<a class="btn sm ghost" href="#calls">Arama listesi →</a></div>
     <div class="row" style="margin-bottom:12px"><button class="btn sm" id="cmP">👥 Yetkilileri bul</button>${co.people.some(p => !p.email) ? '<button class="btn sm" id="cmL">🔎 Mailleri bul</button>' : ''}
       ${co.people.some(p => p.email) ? '<button class="btn sm pri" id="cmD">✨ AI mail yaz</button>' : ''}<span class="sp"></span>${pill(co.status)}</div>
     ${co.people.length ? `<div class="tw" style="max-height:50vh"><table><tbody>${co.people.map(p => `<tr><td><div class="n">${esc(p.name)}</div><small>${esc(p.title)}</small></td><td>${li(p.linkedin)}</td>
       <td>${p.email ? `<span class="mail">${esc(p.email)}</span>` : pill(p.stage)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="mut">Henüz kişi yok. "Yetkilileri bul" ile RocketReach\'te ara.</p>'}`, b => {
     const done = msg => { toast(msg); closeModal(); onChange?.(); };
+    if (b.querySelector('#cmTel')) b.querySelector('#cmTel').onclick = tryT(async () => { await post('/api/companies/contact-info', { ids: [id] }); done('Santral numarası aranıyor (~20 sn)'); });
     b.querySelector('#cmP').onclick = tryT(async () => { const r = await post('/api/companies/people', { ids: [id], max: 5 }); done(r.queued ? 'Yetkili araması kuyruğa alındı' : 'Zaten kuyrukta'); });
     if (b.querySelector('#cmL')) b.querySelector('#cmL').onclick = tryT(async () => { const r = await post('/api/queue/lookup', { contact_ids: co.people.filter(p => !p.email).map(p => p.id), campaign_id: campId }); done(lookupMsg(r)); });
     if (b.querySelector('#cmD')) b.querySelector('#cmD').onclick = tryT(async () => { const r = await post('/api/outbox/draft', { contact_ids: co.people.filter(p => p.email).map(p => p.id), campaign_id: campId }); done(r.queued + ' AI taslak yazılıyor → Mailler'); });
@@ -712,15 +714,11 @@ PAGES.settings = tryT(async () => {
       <div class="grid"><label>Bot token<input id="tt" placeholder="${s.tg_token ? esc(s.tg_token) + ' (kayıtlı)' : '123456:ABC-…'}" ${dis} autocomplete="off"></label>
       <label>Chat / grup ID<div class="row"><input id="tc" value="${esc(s.tg_chat)}" placeholder="-100…" style="flex:1" ${dis}><button class="btn sm" id="tfind" ${dis}>Chat'leri bul</button></div></label><div id="tchats"></div>
       <label>Bildirim türleri</label><div class="chips" id="tmute">${EVT.map(([k, l]) => `<span class="chip sug ${mute.includes(k) ? '' : 'on'}" data-ev="${k}">${l}</span>`).join('')}</div></div>
-      <div class="row" style="margin-top:12px">${adm ? '<button class="btn pri" id="tsave">Kaydet</button>' : ''}<button class="btn" id="ttest">Test mesajı gönder</button></div></div>
+      <div class="row" style="margin-top:12px">${adm ? '<button class="btn pri" id="tsave">Kaydet</button>' : ''}<button class="btn" id="ttest">Test mesajı gönder</button><button class="btn" id="wrep">📊 Haftalık raporu gönder</button></div>
+      <p class="mut" style="font-size:12px;margin:10px 0 0">Haftalık özet her pazartesi 09:00'da, "bugün geri aranacaklar" her iş günü 09:00'da otomatik gelir.</p></div>
   </div><div>
-    <div class="card"><div class="card-h"><h3>Gmail gönderim</h3>${s.gmail_user && s.gmail_pass ? '<span class="pill ok">bağlı</span>' : '<span class="pill bad">yok</span>'}</div>
-      <p class="hint">Google Hesabı → Güvenlik → 2 Adımlı Doğrulama açık olmalı → <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Uygulama şifreleri</a>'nden 16 haneli şifre oluştur. Yanıt takibi için aynı hesapta IMAP açık olmalı.</p>
-      <div class="grid"><label>Gmail adresi<input id="gu" value="${esc(s.gmail_user)}" placeholder="ad@gmail.com veya ad@sirketin.com" ${dis}></label>
-      <label>Uygulama şifresi<input id="gp" type="password" placeholder="${s.gmail_pass ? 'kayıtlı – değiştirmek için yaz' : 'xxxx xxxx xxxx xxxx'}" ${dis} autocomplete="new-password"></label>
-      <label>Gönderen adı<input id="gf" value="${esc(s.from_name)}" placeholder="Emre Yıldız" ${dis}></label></div>
-      <div class="row" style="margin-top:12px">${adm ? '<button class="btn pri" id="gs">Kaydet</button>' : ''}<input id="gto" placeholder="test alıcısı (boş = kendine)" style="flex:1;min-width:160px"><button class="btn" id="gt">✉ Test maili gönder</button></div>
-      <p id="gi" style="margin:10px 0 0"></p></div>
+    <div class="card" id="sendersCard"></div>
+    <div class="card" id="dhCard"></div>
     <div class="card"><h3>İmzam</h3><p class="hint">Gönderdiğin her mailin altına eklenir. HTML kullanabilirsin (logo için &lt;img src="https://…" height="40"&gt;).</p>
       <textarea id="sig" rows="6" placeholder="Emre Yıldız&lt;br&gt;Hype Vision · hypevisionlab.com&lt;br&gt;+90 …">${esc(me.signature)}</textarea><div class="preview" id="sigp" style="margin-top:10px;min-height:50px"></div>
       <button class="btn pri" id="sigs" style="margin-top:12px">İmzayı kaydet</button></div>
@@ -738,16 +736,13 @@ PAGES.settings = tryT(async () => {
   $('okt').onclick = e => busyBtn(e.currentTarget, async () => {
     try { const r = await post('/api/test/openai'); $('oki').innerHTML = `<span class="pill ok">Çalışıyor</span> ${esc(r.text)}`; } catch (er) { $('oki').innerHTML = `<span class="pill bad">${esc(er.message)}</span>`; }
   }, 'Test');
-  $('gt').onclick = e => busyBtn(e.currentTarget, async () => {
-    try { const r = await post('/api/test/gmail', { to: $('gto').value }); $('gi').innerHTML = `<span class="pill ok">✓ Gönderildi</span> <span class="mut">${esc(r.to)} adresinin gelen kutusunu kontrol et</span>`; }
-    catch (er) { $('gi').innerHTML = `<span class="pill bad">Gönderilemedi</span> <span class="err">${esc(er.message)}</span>`; }
-  }, 'Gönderiliyor');
+  renderSenders($('sendersCard')); renderDomain($('dhCard'));
+  $('wrep').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/report/weekly'); toast('Haftalık rapor Telegram\'a gönderildi'); }, 'Gönderiliyor');
   $('ttest').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/test/telegram', { token: $('tt').value.trim(), chat: $('tc').value.trim() }); toast('Telegram mesajı gönderildi ✓'); }, 'Gönderiliyor');
   $('tmute').onclick = e => { const c = e.target.closest('[data-ev]'); if (c && adm) c.classList.toggle('on'); };
   if (adm) {
     $('rks').onclick = tryT(async () => { if (!$('rk').value.trim()) return toast('Key gir', true); await put('/api/settings', { rr_key: $('rk').value }); toast('Kaydedildi'); PAGES.settings(); });
     $('oks').onclick = tryT(async () => { await put('/api/settings', { openai_key: $('ok').value, openai_model: $('om').value }); toast('Kaydedildi'); PAGES.settings(); });
-    $('gs').onclick = tryT(async () => { await put('/api/settings', { gmail_user: $('gu').value, gmail_pass: $('gp').value, from_name: $('gf').value }); toast('Gmail kaydedildi — şimdi test et'); PAGES.settings(); });
     $('tsave').onclick = tryT(async () => {
       const off = [...document.querySelectorAll('#tmute [data-ev]:not(.on)')].map(x => x.dataset.ev).join(',');
       await put('/api/settings', { tg_token: $('tt').value, tg_chat: $('tc').value, tg_mute: off }); toast('Telegram kaydedildi'); PAGES.settings();
@@ -784,97 +779,6 @@ PAGES.users = tryT(async () => {
 });
 
 
-// ================= Mail Listesi (kişi başına şablon) =================
-let TPLS = [];
-const tplOpts = (sel, none = '— şablon seç —') => `<option value="">${none}</option>` + TPLS.map(t => `<option value="${t.id}" ${+sel === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
-const autoTpl = c => { // unvan/ülkeye göre öneri
-  const t = `${c.title || ''} ${c.company || ''}`.toLowerCase(), en = !/[çğıöşü]/i.test(c.name + c.company) && /@[^.]+\.(com|de|co\.uk|fr|it|nl|es|us)$/.test(c.email || '') && !/\.tr$/.test(c.email || '');
-  const pick = re => TPLS.find(x => re.test(x.name))?.id;
-  if (en) return pick(/^EN · Safety/);
-  if (/isg|iş güvenliği|hse|ehs|safety|güvenlik/.test(t)) return pick(/^İSG · KKD/);
-  if (/üretim|production|plant|fabrika|operasyon|operation/.test(t)) return pick(/^Verimlilik/);
-  if (/kalite|quality/.test(t)) return pick(/^Kalite/);
-  if (/lojistik|depo|warehouse|logistic|sevkiyat/.test(t)) return pick(/Forklift/);
-  if (/genel müdür|ceo|general manager|kurucu|founder|owner|sahibi|yönetim kurulu/.test(t)) return pick(/^Üst yönetim/);
-  return pick(/^Genel ·/);
-};
-PAGES.maillist = tryT(async () => {
-  [TPLS] = await Promise.all([api('/api/templates')]); await loadCamps();
-  let rows = [], choice = {}, f = { campaign: '', q: '', state: 'new' };
-  main.innerHTML = head('Mail Listesi', 'Maili bulunan herkes burada. Kişileri seç, herkese ayrı şablon ata (veya hepsine tek şablon), kuyruğa al. Gönderim Gmail\'i korumak için takvime göre yavaş yavaş yapılır.',
-    '<a class="btn" href="#templates">Şablonlar</a><a class="btn" href="#outbox/sırada">Kuyruk</a>') +
-  `<div class="row" style="margin-bottom:12px"><input id="mlq" placeholder="İsim, firma, unvan, mail…" style="max-width:300px"><select id="mlc" style="width:auto">${campOpts('Tüm kampanyalar')}</select>
-    <div class="tabs" id="mls"><button data-s="new" class="on">Hiç mail atılmamış</button><button data-s="">Tümü</button><button data-s="sent">Mail atılmış</button></div></div>
-  <div id="mlt"></div>
-  <div class="selbar"><b id="mlN">Kişi seç</b><span class="sp"></span><select id="mlAll" style="max-width:280px">${tplOpts('', 'Seçilenlere şablon uygula…')}</select>
-    <button class="btn" id="mlAuto" title="Unvana göre uygun şablonu otomatik seç">✨ Unvana göre otomatik</button><button class="btn" id="mlPrev">Önizle</button><button class="btn" id="mlGo">✉ Kuyruğa al</button></div>`;
-  const ids = () => [...main.querySelectorAll('[data-ml]:checked')].map(x => +x.dataset.ml);
-  const upd = () => { const n = ids().length; $('mlN').textContent = n ? `${n} kişi seçili` : 'Kişi seç'; };
-  const draw = async () => {
-    rows = await api('/api/maillist?' + new URLSearchParams(f));
-    $('mlt').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th class="c"><input type="checkbox" id="mlA"></th><th>Kişi</th><th>Firma</th><th>Mail</th><th class="hide-m">Kampanya</th><th>Son durum</th><th style="min-width:230px">Şablon</th></tr></thead><tbody>
-    ${rows.map(r => `<tr><td class="c"><input type="checkbox" data-ml="${r.id}" ${r.blocked ? 'disabled title="Engel listesinde"' : ''}></td><td class="w"><div class="ent">${avatar(r.name)}<div><div class="n">${esc(r.name)}</div><small>${esc(r.title)}</small></div></div></td>
-      <td>${esc(r.company)}<small>${esc(r.location || '')}</small></td><td><span class="mail">${esc(r.email)}</span> ${li(r.linkedin)}</td><td class="hide-m"><small>${esc(r.campaigns || '—')}</small></td>
-      <td>${r.blocked ? pill('engelli') : r.replied ? pill('yanıtladı') : r.last_status ? pill(r.last_status) : '<span class="mut">yeni</span>'}${r.last_sent ? `<small>${fmtDate(r.last_sent)}</small>` : ''}</td>
-      <td><select data-tp="${r.id}">${tplOpts(choice[r.id])}</select></td></tr>`).join('')}</tbody></table></div>`
-      : empty('Bu filtrede maili olan kişi yok', 'Kampanyalardan ya da Kişi Ara\'dan mail bulduğunda burada listelenir.');
-    upd();
-  };
-  let t; $('mlq').oninput = e => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value; draw(); }, 300); };
-  $('mlc').onchange = e => { f.campaign = e.target.value; draw(); };
-  $('mls').onclick = e => { const b = e.target.closest('[data-s]'); if (!b) return; f.state = b.dataset.s; $('mls').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); draw(); };
-  main.onchange = e => {
-    if (e.target.id === 'mlA') main.querySelectorAll('[data-ml]:not(:disabled)').forEach(x => x.checked = e.target.checked);
-    const tp = e.target.closest('[data-tp]'); if (tp) { choice[tp.dataset.tp] = tp.value; const cb = main.querySelector(`[data-ml="${tp.dataset.tp}"]`); if (cb && tp.value && !cb.disabled) cb.checked = true; }
-    upd();
-  };
-  $('mlAll').onchange = e => { const v = e.target.value; if (!v) return; const s = ids(); if (!s.length) { toast('Önce kişi seç', true); e.target.value = ''; return; } s.forEach(id => { choice[id] = v; const el = main.querySelector(`[data-tp="${id}"]`); if (el) el.value = v; }); e.target.value = ''; toast(`${s.length} kişiye şablon atandı`); };
-  $('mlAuto').onclick = () => { const s = ids().length ? ids() : rows.filter(r => !r.blocked).map(r => r.id); let n = 0; for (const id of s) { const r = rows.find(x => x.id === id), v = autoTpl(r); if (v) { choice[id] = v; n++; const el = main.querySelector(`[data-tp="${id}"]`); if (el) el.value = v; } } toast(`${n} kişiye unvanına göre şablon seçildi`); };
-  $('mlPrev').onclick = tryT(async () => {
-    const id = ids()[0] || rows[0]?.id, tp = choice[id]; if (!id || !tp) return toast('Şablonu seçilmiş bir kişi seç', true);
-    const T = TPLS.find(x => x.id === +tp), r = await post('/api/mail/preview', { subject: T.subject, body: T.body, contact_id: id });
-    modal('Önizleme · ' + (rows.find(x => x.id === id)?.name || ''), `<div class="preview"><b>${esc(r.subject)}</b><hr style="border:0;border-top:1px solid #eee">${r.html}</div>`);
-  });
-  $('mlGo').onclick = e => busyBtn(e.currentTarget, async () => {
-    const s = ids(); if (!s.length) return toast('Kişi seç', true);
-    const missing = s.filter(id => !choice[id]); if (missing.length) return toast(`${missing.length} kişiye şablon seçilmedi (alttan "Seçilenlere şablon uygula" ya da "Unvana göre otomatik")`, true);
-    const st = await api('/api/sending');
-    if (!confirm(`${s.length} kişi kuyruğa alınacak.\n\nGmail'i korumak için bugün en fazla ${st.daily - st.today} mail daha gider (günlük limit ${st.daily}${st.warmup ? ', ısınma modu' : ''}), mailler arası 2–5 dk beklenir, aynı firmaya günde en fazla 2 mail gider. Kalanlar sonraki iş günlerine kalır.\n\nDevam?`)) return;
-    const r = await post('/api/outbox/compose-multi', { items: s.map(id => ({ contact_id: id, template_id: +choice[id] })), send: true });
-    const why = {}; r.skipped.forEach(x => why[x.why] = (why[x.why] || 0) + 1);
-    toast(`${r.added} mail kuyruğa alındı${r.skipped.length ? ' · atlanan: ' + Object.entries(why).map(([k, v]) => `${v} ${k}`).join(', ') : ''}`);
-    draw();
-  }, 'Kuyruğa alınıyor');
-  await draw();
-});
-
-// ================= Şablonlar =================
-PAGES.templates = tryT(async (sel) => {
-  TPLS = await api('/api/templates');
-  let cur = TPLS.find(t => t.id === +sel) || TPLS[0] || { id: 0, name: '', subject: '', body: '' };
-  const draw = () => {
-    main.innerHTML = head('Mail Şablonları', 'Hype Vision kataloğundan hazırlanmış toplantı isteyen şablonlar. Değişkenler alıcıya göre otomatik dolar. İmzan otomatik eklenir.', '<button class="btn pri" id="tNew">＋ Yeni şablon</button>') +
-    `<div class="grid" style="grid-template-columns:minmax(220px,320px) 1fr;align-items:start" id="tGrid">
-      <div class="card" style="padding:8px">${TPLS.map(t => `<a class="step" href="#templates/${t.id}" style="margin:4px;color:inherit;text-decoration:none;${t.id === cur.id ? 'border-color:var(--pri);background:var(--pri-soft)' : ''}"><span>${esc(t.name)}</span></a>`).join('') || '<p class="mut" style="padding:12px">Şablon yok</p>'}</div>
-      <div class="card"><label>Şablon adı<input id="tN" value="${esc(cur.name)}"></label><label style="margin-top:10px">Konu<input id="tS" value="${esc(cur.subject)}"></label>
-        <label style="margin-top:10px">İçerik<textarea id="tB" rows="16">${esc(cur.body)}</textarea></label>
-        <div class="chips" style="margin-top:8px">${VARS.map(v => `<span class="chip var" data-v="${v}">{{${v}}}</span>`).join('')}</div>
-        <div class="row" style="margin-top:14px"><button class="btn pri" id="tSv">Kaydet</button><button class="btn" id="tPv">Önizle</button><span class="sp"></span>${cur.id ? '<button class="btn danger" id="tDl">Sil</button>' : ''}</div>
-        <div id="tPo" style="margin-top:12px"></div></div></div>`;
-    if (innerWidth < 860) $('tGrid').style.gridTemplateColumns = '1fr';
-    let focus = $('tB'); $('tS').onfocus = e => focus = e.target; $('tB').onfocus = e => focus = e.target;
-    main.onclick = e => { const v = e.target.closest('[data-v]'); if (v) { const p = focus.selectionStart ?? focus.value.length; focus.value = focus.value.slice(0, p) + `{{${v.dataset.v}}}` + focus.value.slice(focus.selectionEnd ?? p); focus.focus(); } };
-    $('tNew').onclick = () => { cur = { id: 0, name: 'Yeni şablon', subject: '', body: 'Sayın {{adsoyad}},\n\n\n\nSaygılarımla,\n{{gonderen}}' }; draw(); };
-    $('tSv').onclick = tryT(async () => {
-      await post('/api/templates', { id: cur.id || undefined, name: $('tN').value, subject: $('tS').value, body: $('tB').value });
-      TPLS = await api('/api/templates'); cur = TPLS.find(t => t.name === $('tN').value) || TPLS[0]; toast('Şablon kaydedildi'); draw();
-    });
-    $('tPv').onclick = tryT(async () => { const r = await post('/api/mail/preview', { subject: $('tS').value, body: $('tB').value }); $('tPo').innerHTML = `<div class="preview"><b>${esc(r.subject)}</b><hr style="border:0;border-top:1px solid #eee">${r.html}</div>`; });
-    if ($('tDl')) $('tDl').onclick = tryT(async () => { if (!confirm('Şablon silinsin mi?')) return; await del('/api/templates/' + cur.id); TPLS = await api('/api/templates'); cur = TPLS[0] || { id: 0, name: '', subject: '', body: '' }; draw(); });
-  };
-  draw();
-});
-
 // ---------- görsel yardımcılar ----------
 const favicon = d => d ? `<img class="fav" src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=64" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'fav fb',textContent:'${esc(String(d)[0] || '?').toUpperCase()}'}))">` : '<span class="fav fb">?</span>';
 const AVC = ['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#14b8a6'];
@@ -882,6 +786,7 @@ const avatar = n => { n = String(n || '?').trim(); const i = n.split(/\s+/).map(
 const ISO = { 'Türkiye':'tr','Almanya':'de','Avusturya':'at','İsviçre':'ch','Hollanda':'nl','Belçika':'be','Fransa':'fr','İtalya':'it','İspanya':'es','Polonya':'pl','Çekya':'cz','Romanya':'ro','Bulgaristan':'bg','Macaristan':'hu','İngiltere':'gb','Birleşik Krallık':'gb','İrlanda':'ie','İsveç':'se','Danimarka':'dk','Norveç':'no','ABD':'us','Amerika':'us','Kanada':'ca','Meksika':'mx','Brezilya':'br','BAE':'ae','Suudi Arabistan':'sa','Katar':'qa','Mısır':'eg','Fas':'ma','Azerbaycan':'az','Kazakistan':'kz','Özbekistan':'uz','Gürcistan':'ge','Irak':'iq','Hindistan':'in','Endonezya':'id','Malezya':'my','Güney Afrika':'za','Yunanistan':'gr','Sırbistan':'rs','Slovakya':'sk','Slovenya':'si','Hırvatistan':'hr','Portekiz':'pt','Finlandiya':'fi','Ukrayna':'ua','Rusya':'ru','Çin':'cn','Japonya':'jp','Güney Kore':'kr','Vietnam':'vn','Tayland':'th' };
 const flagImg = c => ISO[c] ? `<img class="flagi" src="https://flagcdn.com/w40/${ISO[c]}.png" alt="${c}" loading="lazy">` : '🌍';
 const FLAG = { 'Türkiye': '🇹🇷', 'Almanya': '🇩🇪', 'Avusturya': '🇦🇹', 'İsviçre': '🇨🇭', 'Hollanda': '🇳🇱', 'Belçika': '🇧🇪', 'Fransa': '🇫🇷', 'İtalya': '🇮🇹', 'İspanya': '🇪🇸', 'Polonya': '🇵🇱', 'Çekya': '🇨🇿', 'Romanya': '🇷🇴', 'Bulgaristan': '🇧🇬', 'Macaristan': '🇭🇺', 'İngiltere': '🇬🇧', 'İrlanda': '🇮🇪', 'İsveç': '🇸🇪', 'Danimarka': '🇩🇰', 'Norveç': '🇳🇴', 'ABD': '🇺🇸', 'Kanada': '🇨🇦', 'Meksika': '🇲🇽', 'Brezilya': '🇧🇷', 'BAE': '🇦🇪', 'Suudi Arabistan': '🇸🇦', 'Katar': '🇶🇦', 'Mısır': '🇪🇬', 'Fas': '🇲🇦', 'Azerbaycan': '🇦🇿', 'Kazakistan': '🇰🇿', 'Özbekistan': '🇺🇿', 'Gürcistan': '🇬🇪', 'Irak': '🇮🇶', 'Hindistan': '🇮🇳', 'Endonezya': '🇮🇩', 'Malezya': '🇲🇾', 'Güney Afrika': '🇿🇦' };
+const PTYPES = ['OSGB (ortak sağlık güvenlik birimi)', 'İSG danışmanlık firması', 'CCTV / güvenlik sistemleri entegratörü', 'Endüstriyel otomasyon firması', 'MES / ERP / İSG yazılımı firması', 'Elektrik-elektronik taahhüt firması'];
 const COUNTS = [10, 20, 40, 60, 100, 150, 200];
 const ico = (id, cls = '') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
 
@@ -923,6 +828,7 @@ PAGES.dash = tryT(async () => {
       <div class="row" style="margin-bottom:10px">${s.sending.ok ? '<span class="pill ok">● Açık</span>' : `<span class="pill warn">${esc(s.sending.why)}</span>`}<span class="sp"></span><b>${s.sending.today}<span class="mut">/${s.sending.daily}</span></b></div>
       <div class="bar"><i style="width:${Math.min(100, s.sending.today / Math.max(1, s.sending.daily) * 100)}%"></i></div>
       <div class="mini3"><a href="#outbox/taslak"><b>${s.drafts}</b>Taslak</a><a href="#outbox/sırada"><b>${s.queued}</b>Sırada</a><a href="#queue"><b>${s.tasks + s.jobs}</b>Arka plan</a></div>
+      <div class="mini3" style="grid-template-columns:1fr 1fr"><a href="#replies"><b style="${s.replies ? 'color:var(--ok)' : ''}">${s.replies}</b>Yanıt bekliyor</a><a href="#calls/bug%C3%BCn"><b>${s.callsToday}</b>Bugün aranacak</a></div>
       ${steps.some(x => !x[0]) ? `<div class="setup">${steps.map(([ok, t, h]) => `<a href="#${h}" class="${ok ? 'ok' : ''}">${ok ? '✓' : '○'} ${t}</a>`).join('')}</div>` : ''}</div>
     <div class="card" id="quota"><h3>RocketReach kotası</h3><p class="mut"><span class="spin"></span></p></div>
     <div class="card span2"><div class="card-h"><h3>Son hareketler</h3><span class="mut" style="font-size:12px">Telegram'a da gider</span></div>${feedHtml(ev.slice(0, 14))}</div>
@@ -936,7 +842,7 @@ PAGES.dash = tryT(async () => {
 PAGES.newcamp = () => {
   const pre = JSON.parse(sessionStorage.getItem('nc') || '{}'); sessionStorage.removeItem('nc');
   main.innerHTML = head('Firma Bul', 'Sektör, şehir ya da ülke — biri yeter. AI web\'den gerçek firmaları bulur; her firmadan en uygun <b>tek</b> yetkiliyi ve mailini çıkarır.') +
-  `<div class="seg" id="seg"><button class="on" data-m="ai">✨ AI ile bul</button><button data-m="list">📋 Listemi ver</button><button data-m="ideas">💡 Öneriler</button></div>
+  `<div class="seg" id="seg"><button class="on" data-m="ai">✨ AI ile bul</button><button data-m="list">📋 Listemi ver</button><button data-m="partner">🤝 Çözüm ortağı</button><button data-m="ideas">💡 Öneriler</button></div>
   <form class="card quick" id="qf"><div class="grid g3 big">
     <label>Sektör<input name="sector" id="qS" value="${esc(pre.sector || '')}" placeholder="ör. Otomotiv yan sanayi" autocomplete="off"></label>
     <label>Şehir / bölge<input name="location" id="qL" value="${esc(pre.location || '')}" placeholder="ör. Gebze OSB" autocomplete="off"></label>
@@ -952,11 +858,23 @@ PAGES.newcamp = () => {
     <textarea name="text" rows="7" placeholder="Farplas Otomotiv, farplas.com&#10;Assan Hanil, assanhanil.com.tr&#10;Bosch Bursa, bosch.com.tr"></textarea>
     <div class="grid g2" style="margin-top:12px"><label>Kampanya adı<input name="name" placeholder="ör. Bursa otomotiv listem"></label><label>Öncelikli unvanlar (virgülle)<input name="titles" placeholder="İSG Müdürü, Fabrika Müdürü, Plant Manager"></label></div>
     <div class="row" style="margin-top:14px"><label class="inline"><input type="checkbox" name="lookup" checked> Mailini de çıkar</label><span class="sp"></span><button class="btn pri">${ico('users')} Yetkilileri bul</button></div></form>
+  <form class="card quick hide" id="pf2"><h3>Çözüm ortağı bul</h3><p class="hint">Katalogdaki ortaklık modeli: OSGB'ler, CCTV entegratörleri, otomasyon ve yazılım firmaları kendi müşterilerine Hype Vision satar. Bir ortak onlarca tesis demektir. Her firmadan genel müdür / kurucu / iş geliştirme yetkilisi ve santral numarası bulunur.</p>
+    <label>Ortak türü</label><div class="chips" id="ptypes" style="margin:6px 0 14px">${PTYPES.map((t, i) => `<span class="chip sug ${i < 2 ? 'on' : ''}" data-pt="${esc(t)}">${esc(t)}</span>`).join('')}</div>
+    <div class="grid g2"><label>Şehir / bölge<input name="location" placeholder="ör. Kocaeli, Bursa, İstanbul Anadolu"></label><label>Ülke<select name="country">${COUNTRIES.map(c => `<option value="${c}">${c}</option>`).join('')}</select></label></div>
+    <div class="countpick"><span>Kaç firma?</span>${COUNTS.map(n => `<label><input type="radio" name="count" value="${n}" ${n === 40 ? 'checked' : ''}><span>${n}</span></label>`).join('')}</div>
+    <div class="row" style="margin-top:18px"><button class="btn pri lg">🤝 Ortak adaylarını bul</button><span class="mut" style="font-size:12.5px">Mail için "Çözüm ortaklığı · OSGB" şablonunu kullan; Arama Listesi'nden telefonla da ulaş.</span></div></form>
   <div class="card hide" id="ideaCard"><div class="card-h"><h3>✨ Şirket profiline göre AI önerileri</h3><button class="btn sm ghost" id="ideaRe2">Yeni öneriler</button></div><div id="ideas2"></div></div>`;
   $('seg').onclick = e => { const b = e.target.closest('[data-m]'); if (!b) return; $('seg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-    $('qf').classList.toggle('hide', b.dataset.m !== 'ai'); $('lf2').classList.toggle('hide', b.dataset.m !== 'list'); $('ideaCard').classList.toggle('hide', b.dataset.m !== 'ideas');
+    $('qf').classList.toggle('hide', b.dataset.m !== 'ai'); $('lf2').classList.toggle('hide', b.dataset.m !== 'list'); $('pf2').classList.toggle('hide', b.dataset.m !== 'partner'); $('ideaCard').classList.toggle('hide', b.dataset.m !== 'ideas');
     if (b.dataset.m === 'ideas' && !$('ideas2').innerHTML) ideasInto($('ideas2')); };
   $('ideaRe2').onclick = () => ideasInto($('ideas2'), true);
+  $('ptypes').onclick = e => { const c = e.target.closest('[data-pt]'); if (c) c.classList.toggle('on'); };
+  $('pf2').onsubmit = e => { e.preventDefault(); busyBtn(e.target.querySelector('.btn.pri'), async () => {
+    const types = [...document.querySelectorAll('#ptypes .on')].map(x => x.dataset.pt); if (!types.length) return toast('En az bir ortak türü seç', true);
+    const f = Object.fromEntries(new FormData(e.target));
+    const { id } = await post('/api/campaigns/quick', { ...f, sector: types.join(', '), kind: 'partner', people: true, lookup: true, note: 'çözüm ortağı / bayi adayı' });
+    await loadCamps(); location.hash = `c/${id}/companies`; toast('AI ortak adaylarını arıyor…');
+  }, 'Hazırlanıyor'); };
   main.onclick = e => {
     const a = e.target.closest('[data-qs]'); if (a) $('qS').value = a.dataset.qs;
     const b = e.target.closest('[data-ql]'); if (b) $('qL').value = $('qL').value && !$('qL').value.includes(b.dataset.ql) ? $('qL').value + ', ' + b.dataset.ql : b.dataset.ql;
@@ -1015,5 +933,284 @@ CTAB.companies = async (c, el) => {
   };
   await draw();
 };
+
+
+// ================= v9 · Gönderen hesaplar + alan adı sağlığı (Entegrasyonlar içinde) =================
+async function renderSenders(el) {
+  const list = await api('/api/senders'), adm = ME.role === 'admin';
+  el.innerHTML = `<div class="card-h"><h3>Gönderen Gmail hesapları</h3><span class="pill ${list.some(s => s.active) ? 'ok' : 'bad'}">${list.filter(s => s.active).length} aktif</span></div>
+    <p class="hint">Mailler hesaplar arasında sırayla dağıtılır; her hesabın kendi günlük limiti ve ısınması vardır. Takip mailleri ilk maili atan hesaptan aynı zincirde gider.
+      Uygulama şifresi: Google Hesabı → Güvenlik → 2 Adımlı Doğrulama → <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Uygulama şifreleri</a>.</p>
+    ${list.length ? `<div class="tw" style="margin-bottom:14px"><table><thead><tr><th>Hesap</th><th>Bugün</th><th>Limit</th><th>Durum</th><th></th></tr></thead><tbody>
+    ${list.map(s => `<tr><td><div class="ent">${avatar(s.email)}<div><div class="n">${esc(s.email)}</div><small>${esc(s.name || '—')}${s.note ? ' · ' + esc(s.note) : ''}</small></div></div></td>
+      <td><b>${s.today}</b><span class="mut">/${s.eff}</span>${s.eff < s.daily ? ' <span class="pill info">ısınma</span>' : ''}</td>
+      <td>${adm ? `<input type="number" min="5" max="200" value="${s.daily}" data-sd="${s.id}" style="width:76px;height:32px">` : s.daily}</td>
+      <td>${adm ? `<label class="switch"><input type="checkbox" data-sa="${s.id}" ${s.active ? 'checked' : ''}><i></i></label>` : pill(s.active ? 'aktif' : 'pasif')}</td>
+      <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-st="${s.id}">Test</button>${adm ? ` <button class="icon" data-sx="${s.id}" title="Kaldır">✕</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${adm ? `<details ${list.length ? '' : 'open'}><summary class="btn sm" style="list-style:none;display:inline-flex">＋ Hesap ekle</summary>
+      <div class="grid g2" style="margin-top:12px"><label>Gmail / Workspace adresi<input id="nsE" placeholder="ad@hypevisionlab.com" autocomplete="off"></label>
+      <label>Uygulama şifresi (16 hane)<input id="nsP" type="password" placeholder="xxxx xxxx xxxx xxxx" autocomplete="new-password"></label>
+      <label>Gönderen adı<input id="nsN" placeholder="Emre Yıldız"></label><label>Günlük limit<input id="nsD" type="number" value="40" min="5" max="200"></label></div>
+      <div class="row" style="margin-top:12px"><button class="btn pri" id="nsGo">Bağlan ve test maili gönder</button><span class="mut" style="font-size:12.5px">Önce bağlantı doğrulanır, hesabın kendisine test maili gider.</span></div></details>` : ''}`;
+  el.onclick = tryT(async e => {
+    const t = e.target.closest('[data-st]'); if (t) return busyBtn(t, async () => { const r = await post(`/api/senders/${t.dataset.st}/test`, {}); toast('Test maili gönderildi → ' + r.to); }, '…');
+    const x = e.target.closest('[data-sx]'); if (x && confirm('Hesap kaldırılsın mı? (Gönderim geçmişi olan hesap pasife alınır)')) { await del('/api/senders/' + x.dataset.sx); renderSenders(el); }
+  });
+  el.onchange = tryT(async e => {
+    const a = e.target.closest('[data-sa]'); if (a) { await put('/api/senders/' + a.dataset.sa, { active: a.checked }); toast(a.checked ? 'Hesap aktif' : 'Hesap pasif'); }
+    const d = e.target.closest('[data-sd]'); if (d) { await put('/api/senders/' + d.dataset.sd, { daily: +d.value }); toast('Limit kaydedildi'); renderSenders(el); }
+  });
+  if ($('nsGo')) $('nsGo').onclick = ev => busyBtn(ev.currentTarget, async () => {
+    await post('/api/senders', { email: $('nsE').value, pass: $('nsP').value, name: $('nsN').value, daily: $('nsD').value });
+    toast('Hesap eklendi ✓ test maili gönderildi'); renderSenders(el); renderDomain($('dhCard'));
+  }, 'Bağlanıyor');
+}
+async function renderDomain(el, domain) {
+  el.innerHTML = '<h3>Alan adı sağlığı</h3><p class="mut"><span class="spin"></span> DNS kontrol ediliyor…</p>';
+  try {
+    const d = await api('/api/domain-health' + (domain ? '?domain=' + encodeURIComponent(domain) : ''));
+    el.innerHTML = `<div class="card-h"><h3>Alan adı sağlığı · ${esc(d.domain)}</h3><span class="pill ${d.score === d.of ? 'ok' : d.score >= 3 ? 'warn' : 'bad'}">${d.score}/${d.of}</span></div>
+      <p class="hint">Spam klasörüne düşmemenin temeli. Eksik olanı DNS panelinde (Netlify/IHS) aşağıdaki gibi ekle.</p>
+      ${d.note ? `<div class="banner info">${esc(d.note)}</div>` : ''}
+      <div class="steps">${d.checks.map(c => `<div class="step ${c.ok ? 'done' : ''}" style="align-items:flex-start"><span class="ck">${c.ok ? '✓' : '!'}</span><span><b>${c.key}</b> <small class="mut" style="word-break:break-all">${esc(c.value)}</small>
+        ${c.ok ? '' : `<div style="margin-top:6px;font-size:12.5px;color:var(--txt2)">${esc(c.fix)}</div>`}</span></div>`).join('')}</div>
+      <div class="row" style="margin-top:12px"><input id="dhD" placeholder="başka alan adı" style="max-width:220px"><button class="btn sm" id="dhGo">Kontrol et</button></div>`;
+    $('dhGo').onclick = () => renderDomain(el, $('dhD').value);
+  } catch (e) { el.innerHTML = '<h3>Alan adı sağlığı</h3><p class="mut">Kontrol için alan adı gir (gönderen hesap eklenince otomatik yapılır).</p><div class="row"><input id="dhD" placeholder="hypevisionlab.com" style="max-width:220px"><button class="btn sm" id="dhGo">Kontrol et</button></div>'; .onclick = () => renderDomain(el, .value); }
+}
+
+// ================= Yanıtlar =================
+const RL = [['', 'Tümü'], ['ilgileniyor', '🔥 İlgileniyor'], ['soru', '❓ Soru'], ['yanlış kişi', '↪️ Yanlış kişi'], ['sonra yaz', '🕓 Sonra yaz'], ['otomatik cevap', '🏖️ Otomatik'], ['ilgisiz', '🚫 İlgisiz']];
+const LPILL = { 'ilgileniyor': 'ok', 'soru': 'info', 'yanlış kişi': 'pri', 'sonra yaz': 'warn', 'otomatik cevap': '', 'ilgisiz': 'bad' };
+PAGES.replies = tryT(async (lab = '') => {
+  lab = decodeURIComponent(lab || '');
+  const { list, counts } = await api('/api/replies' + (lab ? '?label=' + encodeURIComponent(lab) : ''));
+  const cnt = l => counts.filter(c => !l || c.label === l).reduce((a, b) => a + b.n, 0);
+  const open = counts.filter(c => c.status === 'yeni' && ['ilgileniyor', 'soru', 'yanlış kişi', 'sonra yaz'].includes(c.label)).reduce((a, b) => a + b.n, 0);
+  main.innerHTML = head('Yanıtlar', 'Gönderdiğin maillere gelen cevaplar. AI her yanıtı etiketler, özetler ve cevap taslağı hazırlar; otomatik cevapta takibi erteler, ilgisizi engeller, yönlendirmede önerilen kişiyi ekler.',
+    `<button class="btn" id="rqCheck">↻ Gelen kutusunu kontrol et</button>`) +
+  `${open ? `<div class="banner info">${open} yanıt cevap bekliyor</div>` : ''}
+  <div class="tabs" style="margin-bottom:14px">${RL.map(([k, l]) => `<a href="#replies/${encodeURIComponent(k)}" class="${lab === k ? 'on' : ''}">${l}<span class="cnt">${cnt(k)}</span></a>`).join('')}</div>
+  ${list.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Kişi</th><th>Etiket</th><th>Özet</th><th class="hide-m">Geldi</th><th>Durum</th></tr></thead><tbody>
+  ${list.map(r => `<tr class="click" data-rp="${r.id}"><td class="w"><div class="ent">${avatar(r.name || r.from_email)}<div><div class="n">${esc(r.name || r.from_name || r.from_email)}</div><small>${esc(r.title || '')}${r.company ? ' @ ' + esc(r.company) : ''}</small></div></div></td>
+    <td><span class="pill ${LPILL[r.label] || ''}">${esc(r.label || 'analiz ediliyor')}</span></td><td style="max-width:420px"><small style="color:var(--txt2)">${esc(r.summary || r.subject)}</small></td>
+    <td class="hide-m mut">${ago(r.received_at)}</td><td>${pill(r.status)}</td></tr>`).join('')}</tbody></table></div>`
+  : empty('Henüz yanıt yok', 'Gelen kutusu 5 dakikada bir taranır. Yanıt gelince Telegram\'a da düşer.')}`;
+  $('rqCheck').onclick = e => busyBtn(e.currentTarget, async () => { const r = await post('/api/inbox/check'); toast(r.fresh ? r.fresh + ' yeni yanıt' : 'Yeni yanıt yok'); PAGES.replies(lab); }, 'Taranıyor');
+  main.onclick = e => { const r = e.target.closest('[data-rp]'); if (r) replyModal(+r.dataset.rp, () => PAGES.replies(lab)); };
+});
+async function replyModal(id, onDone) {
+  const r = await api('/api/replies/' + id);
+  modal(`${r.name || r.from_email} · ${r.company || ''}`, `<div class="row" style="margin-bottom:10px"><span class="pill ${LPILL[r.label] || ''}">${esc(r.label)}</span><span class="mut" style="font-size:12.5px">${fmtDate(r.received_at)} · ${esc(r.from_email)}</span><span class="sp"></span>
+      <select id="rpL" style="width:auto;height:30px">${RL.slice(1).map(([k, l]) => `<option value="${esc(k)}" ${r.label === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <p style="margin:0 0 8px;font-weight:600">${esc(r.summary)}</p>
+    <div class="preview" style="white-space:pre-wrap;max-height:220px;overflow:auto;font-size:13.5px">${esc(r.text || '(metin alınamadı)')}</div>
+    ${r.thread?.length ? `<details style="margin-top:10px"><summary class="mut" style="cursor:pointer;font-size:12.5px">Gönderdiğimiz ${r.thread.length} mail</summary>${r.thread.map(t => `<div class="mailcard" style="margin-top:8px"><div class="subj">${esc(t.subject)}</div><div class="body" style="max-height:none">${esc(t.body)}</div></div>`).join('')}</details>` : ''}
+    <label style="margin-top:14px">Cevabın (AI taslağı — düzenleyebilirsin, imzan eklenir)<textarea id="rpT" rows="8">${esc(r.draft || '')}</textarea></label>
+    <div class="row" style="margin-top:12px"><button class="btn sm" id="rpRe">✨ Yeniden analiz et</button><button class="btn sm" id="rpDone">Tamamlandı</button><span class="sp"></span><button class="btn pri" id="rpSend">Cevabı gönder</button></div>`, b => {
+    const done = msg => { toast(msg); closeModal(); onDone?.(); };
+    b.querySelector('#rpSend').onclick = e => busyBtn(e.currentTarget, async () => { if (!confirm(`${r.from_email} adresine şimdi gönderilsin mi?`)) return; await post(`/api/replies/${id}/send`, { text: b.querySelector('#rpT').value }); done('Cevap gönderildi ✓'); }, 'Gönderiliyor');
+    b.querySelector('#rpDone').onclick = tryT(async () => { await put('/api/replies/' + id, { status: 'tamam', draft: b.querySelector('#rpT').value }); done('Tamamlandı'); });
+    b.querySelector('#rpRe').onclick = e => busyBtn(e.currentTarget, async () => { await post(`/api/replies/${id}/reclassify`); closeModal(); replyModal(id, onDone); }, 'AI');
+    b.querySelector('#rpL').onchange = tryT(async e => { await put('/api/replies/' + id, { label: e.target.value }); toast('Etiket değişti — ilgili işlem uygulandı'); });
+  });
+}
+
+// ================= Arama listesi =================
+const CST = [['bekleyen', 'Aranacak'], ['bugün', 'Bugün geri ara'], ['geri ara', 'Geri arama'], ['görüşüldü', 'Görüşüldü'], ['toplantı', 'Toplantı'], ['', 'Tümü']];
+const CALLS = ['', 'arandı', 'ulaşılamadı', 'geri ara', 'görüşüldü', 'toplantı', 'ilgisiz', 'yanlış numara'];
+const telHref = p => 'tel:' + String(p || '').replace(/[^\d+]/g, '');
+PAGES.calls = tryT(async (st = 'bekleyen') => {
+  st = decodeURIComponent(st); await loadCamps();
+  let f = { status: st, campaign: sessionStorage.getItem('callCamp') || '', q: '' };
+  main.innerHTML = head('Arama Listesi', 'Firmaların web sitesinde yayınlanan santral numaraları ve (varsa) yetkili telefonları. Telefonda numaraya dokun, arandıktan sonra durumunu ve notunu gir.',
+    '<button class="btn" id="clFind">📞 Eksik santral numaralarını bul</button>') +
+  `<div class="row" style="margin-bottom:12px"><div class="tabs">${CST.map(([k, l]) => `<a href="#calls/${encodeURIComponent(k)}" class="${st === k ? 'on' : ''}">${l}</a>`).join('')}</div>
+    <select id="clC" style="width:auto">${campOpts('Tüm kampanyalar')}</select><input id="clQ" placeholder="Firma / şehir ara…" style="max-width:220px"></div><div id="clT"></div>`;
+  $('clC').value = f.campaign;
+  let rows = [];
+  const draw = async () => {
+    rows = await api('/api/calls?' + new URLSearchParams(f));
+    rows.forEach(x => { try { x.p = x.person ? JSON.parse(x.person) : null; } catch { x.p = null; } });
+    $('clT').innerHTML = rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Firma</th><th>Telefon</th><th class="hide-m">Yetkili</th><th>Durum</th><th>Not / geri arama</th></tr></thead><tbody>
+    ${rows.map(x => { const pp = (x.p?.phones || '').split(',').map(s => s.trim()).filter(Boolean); return `<tr data-cl="${x.id}">
+      <td class="w"><div class="ent">${favicon(x.domain)}<div><div class="n">${esc(x.name)}</div><small>${esc([x.city, x.sector].filter(Boolean).join(' · '))}${x.campaign ? ' · ' + esc(x.campaign) : ''}</small></div></div></td>
+      <td>${x.phone ? `<a class="btn sm pri" href="${telHref(x.phone)}">📞 ${esc(x.phone)}</a>` : `<span class="mut">—</span>`}${pp.map(p => `<a class="btn sm" style="margin-top:4px" href="${telHref(p)}">👤 ${esc(p)}</a>`).join('')}
+        ${x.gen_email ? `<small><a href="mailto:${esc(x.gen_email)}">${esc(x.gen_email)}</a></small>` : ''}</td>
+      <td class="hide-m">${x.p ? `<div class="n">${esc(x.p.name)} ${li(x.p.linkedin)}</div><small>${esc(x.p.title || '')}</small>${x.p.email ? `<small class="mail">${esc(x.p.email)}</small>` : ''}` : '<span class="mut">—</span>'}</td>
+      <td><select data-cs="${x.id}" style="width:auto;min-width:130px;height:32px">${CALLS.map(s => `<option value="${s}" ${x.call_status === s ? 'selected' : ''}>${s || '— aranmadı'}</option>`).join('')}</select>
+        ${x.called_at ? `<small>${ago(x.called_at)} önce</small>` : ''}</td>
+      <td style="min-width:220px"><input data-cn="${x.id}" value="${esc(x.call_note)}" placeholder="not…" style="height:32px">
+        <input type="datetime-local" data-cb="${x.id}" value="${x.callback_at ? new Date(new Date(x.callback_at).getTime() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16) : ''}" style="height:32px;margin-top:4px;${x.call_status === 'geri ara' ? '' : 'display:none'}"></td></tr>`; }).join('')}</tbody></table></div>`
+    : empty('Bu filtrede firma yok', 'Kampanyalardaki firmalar burada listelenir. Numarası olmayanlar için "Eksik santral numaralarını bul".');
+  };
+  const save = async id => {
+    const tr = main.querySelector(`[data-cl="${id}"]`), st2 = tr.querySelector('[data-cs]').value, cb = tr.querySelector('[data-cb]');
+    cb.style.display = st2 === 'geri ara' ? '' : 'none';
+    await put(`/api/companies/${id}/call`, { call_status: st2, call_note: tr.querySelector('[data-cn]').value, callback_at: st2 === 'geri ara' && cb.value ? new Date(cb.value).toISOString() : null });
+  };
+  main.onchange = tryT(async e => {
+    if (e.target.id === 'clC') { f.campaign = e.target.value; sessionStorage.setItem('callCamp', f.campaign); return draw(); }
+    const id = e.target.closest('[data-cl]')?.dataset.cl; if (!id) return;
+    if (e.target.matches('[data-cs]') && e.target.value === 'geri ara') { const cb = main.querySelector(`[data-cb="${id}"]`); cb.style.display = ''; if (!cb.value) { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); cb.value = new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); } }
+    await save(id); toast('Kaydedildi');
+  });
+  let t; $('clQ').oninput = e => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value; draw(); }, 300); };
+  $('clFind').onclick = ev => busyBtn(ev.currentTarget, async () => {
+    const ids = rows.filter(x => !x.phone).map(x => x.id).slice(0, 60);
+    if (!ids.length) return toast('Listede numarası eksik firma yok');
+    const r = await post('/api/companies/contact-info', { ids }); toast(`${r.queued} firmanın santral numarası aranıyor (~20 sn/firma)`);
+  }, 'Kuyruğa');
+  await draw();
+});
+
+// ================= Sinyaller =================
+const SK = { 'yatırım': '💰', 'yeni tesis': '🏗️', 'kapasite': '📈', 'iş kazası': '⚠️', 'sertifika': '🏅', 'ihracat': '🚢', 'dijitalleşme': '🤖' };
+PAGES.signals = tryT(async () => {
+  await loadCamps();
+  const list = await api('/api/signals');
+  main.innerHTML = head('Sinyaller', 'AI son haberleri tarar: yeni fabrika, kapasite artışı, yatırım, iş kazası, sertifika… Bu firmalar şu an görüntü işleme yatırımına en açık olanlar — "şimdi yaz" listesi. Her pazartesi aktif kampanyalar için otomatik taranır.',
+    `<select id="sgC" style="width:auto">${campOpts('Tüm aktif kampanyalar')}</select><button class="btn pri" id="sgScan">📰 Şimdi tara</button>`) +
+  (list.length ? `<div class="ideas">${list.map(s => `<div class="idea" data-sg="${s.id}"><div class="idea-top"><span style="font-size:18px">${SK[s.kind] || '📰'}</span><span class="pill">${esc(s.kind || 'haber')}</span><span class="mut">${esc(s.date || '')}</span></div>
+    <div class="ent">${favicon(s.domain)}<div><h4>${esc(s.company)}</h4><small class="mut">${esc(s.city || '')}${s.campaign ? ' · ' + esc(s.campaign) : ''}</small></div></div>
+    <p>${esc(s.event)}</p>${s.url ? `<a href="${esc(String(s.url).replace(/^\(?\[?[^\]]*\]?\(?/, '').replace(/\)+$/, '') || s.url)}" target="_blank" rel="noopener" style="font-size:12px">Haberi aç ↗</a>` : ''}
+    <div class="row">${s.status === 'eklendi' ? pill('kampanyaya eklendi') : `<button class="btn sm pri" data-sa="${s.id}">Kampanyaya ekle + yetkiliyi bul</button>`}<button class="btn sm ghost" data-sh="${s.id}">Gizle</button></div></div>`).join('')}</div>`
+  : empty('Henüz sinyal yok', '"Şimdi tara" ile aktif kampanyalarının sektör ve bölgesinde son haberleri tarat (~1 dk/kampanya).'));
+  $('sgScan').onclick = e => busyBtn(e.currentTarget, async () => { const r = await post('/api/signals/scan', { campaign_id: $('sgC').value || null }); toast(r.queued ? `${r.queued} kampanya taranıyor — bitince Telegram'a haber gelir` : 'Aktif kampanya yok'); }, 'Kuyruğa');
+  main.onclick = tryT(async e => {
+    const a = e.target.closest('[data-sa]'); if (a) { await post(`/api/signals/${a.dataset.sa}/add`, { campaign_id: $('sgC').value || null }); toast('Firma eklendi; yetkili ve santral numarası aranıyor'); return PAGES.signals(); }
+    const h = e.target.closest('[data-sh]'); if (h) { await put('/api/signals/' + h.dataset.sh, { status: 'gizli' }); h.closest('.idea').remove(); }
+  });
+});
+
+
+// ================= Mail Listesi (kişi başına şablon + kişisel ilk cümle + A/B) =================
+let TPLS = [], TSTATS = {};
+const tplOpts = (sel, none = '— şablon seç —') => `<option value="">${none}</option>` + TPLS.map(t => `<option value="${t.id}" ${+sel === t.id ? 'selected' : ''}>${esc(t.name)}${TSTATS[t.id]?.sent >= 5 ? ` · %${TSTATS[t.id].rate}` : ''}</option>`).join('');
+const autoTpl = c => {
+  const t = `${c.title || ''} ${c.company || ''}`.toLowerCase(), en = /@[^@]+\.(com|de|co\.uk|fr|it|nl|es|us|pl|hu|ro|cz|at|ch|be|se|dk|no|ie|ca|mx|br|ae|sa|qa)$/.test(c.email || '') && !/[çğıöşü]/i.test((c.name || '') + (c.company || '')) && !/\.tr$/.test(c.email || '');
+  const pick = re => TPLS.find(x => re.test(x.name))?.id;
+  if (en) return /plant|production|operation|manufactur/.test(t) ? pick(/^EN · Downtime/) : pick(/^EN · Safety/);
+  if (/osgb|isg danışman|güvenlik sistem|cctv|entegrat|otomasyon/.test(t)) return pick(/^Çözüm ortaklığı/);
+  if (/isg|iş güvenliği|hse|ehs|safety|güvenlik/.test(t)) return pick(/^İSG · KKD/);
+  if (/kalite|quality/.test(t)) return pick(/^Kalite/);
+  if (/lojistik|depo|warehouse|logistic|sevkiyat/.test(t)) return pick(/Forklift/);
+  if (/üretim|production|plant|fabrika|operasyon|operation/.test(t)) return pick(/^Verimlilik/);
+  if (/genel müdür|ceo|general manager|kurucu|founder|owner|sahibi|yönetim kurulu|managing/.test(t)) return pick(/^Üst yönetim/);
+  return pick(/^Genel ·/);
+};
+// A/B: iki şablon arasında dağıt; ikisi de ≥15 gönderime ulaştıysa kazanana %70 ver
+function abSplit(ids, a, b) {
+  const sa = TSTATS[a] || {}, sb = TSTATS[b] || {};
+  let wa = .5;
+  if ((sa.sent || 0) >= 15 && (sb.sent || 0) >= 15 && sa.rate !== sb.rate) wa = sa.rate > sb.rate ? .7 : .3;
+  const out = {}; let ca = 0;
+  ids.forEach((id, i) => { const useA = ca / Math.max(1, i) < wa || i === 0; out[id] = useA ? a : b; if (useA) ca++; });
+  return { map: out, wa };
+}
+PAGES.maillist = tryT(async () => {
+  const [tp, st] = await Promise.all([api('/api/templates'), api('/api/templates/stats')]); await loadCamps();
+  TPLS = tp; TSTATS = Object.fromEntries(st.map(x => [x.id, x]));
+  let rows = [], choice = {}, f = { campaign: '', q: '', state: 'new' };
+  let personal = (() => { try { return localStorage.getItem('personal') !== '0'; } catch { return true; } })();
+  main.innerHTML = head('Mail Listesi', 'Maili bulunan herkes. Kişileri seç, herkese ayrı şablon ata (ya da A/B testi yap), kuyruğa al. Göndermeden önce adresler doğrulanır; gönderim Gmail\'i korumak için hesaplara yayılarak yavaş yapılır.',
+    '<a class="btn" href="#templates">Şablonlar</a><a class="btn" href="#outbox/sırada">Kuyruk</a>') +
+  `<div class="toolbar"><input id="mlq" placeholder="İsim, firma, unvan, mail…" style="max-width:260px"><select id="mlc" style="width:auto">${campOpts('Tüm kampanyalar')}</select>
+    <div class="tabs" id="mls"><button data-s="new" class="on">Hiç mail atılmamış</button><button data-s="">Tümü</button><button data-s="sent">Mail atılmış</button></div><span class="sp"></span>
+    <label class="inline" title="AI her firmanın sitesine/haberlerine bakıp mailin başına tek bir kişisel cümle ekler"><span class="switch"><input type="checkbox" id="mlP" ${personal ? 'checked' : ''}><i></i></span> ✨ Kişiye özel ilk cümle</label></div>
+  <div id="mlt"></div>
+  <div class="selbar"><b id="mlN">Kişi seç</b><span class="sp"></span><select id="mlAll" style="max-width:250px">${tplOpts('', 'Seçilenlere şablon…')}</select>
+    <button class="btn" id="mlAuto">✨ Unvana göre</button><button class="btn" id="mlAB">A/B</button><button class="btn" id="mlPrev">Önizle</button><button class="btn" id="mlGo">✉ Kuyruğa al</button></div>`;
+  const ids = () => [...main.querySelectorAll('[data-ml]:checked')].map(x => +x.dataset.ml);
+  const upd = () => { const n = ids().length; $('mlN').textContent = n ? `${n} kişi seçili` : 'Kişi seç'; };
+  const setTpl = (id, v) => { choice[id] = v; const el = main.querySelector(`[data-tp="${id}"]`); if (el) el.value = v; };
+  const draw = async () => {
+    rows = await api('/api/maillist?' + new URLSearchParams(f));
+    $('mlt').innerHTML = rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th class="c"><input type="checkbox" id="mlA"></th><th>Kişi</th><th>Firma</th><th>Mail</th><th class="hide-m">Son durum</th><th style="min-width:230px">Şablon</th></tr></thead><tbody>
+    ${rows.map(r => { let chk = {}; try { chk = JSON.parse(r.email_check || '{}'); } catch {} return `<tr><td class="c"><input type="checkbox" data-ml="${r.id}" ${r.blocked ? 'disabled title="Engel listesinde"' : ''}></td>
+      <td class="w"><div class="ent">${avatar(r.name)}<div><div class="n">${esc(r.name)} ${li(r.linkedin)}</div><small>${esc(r.title)}</small></div></div></td>
+      <td><div class="ent">${favicon(r.domain || String(r.email).split('@')[1])}<div><div class="n" style="font-weight:500">${esc(r.company)}</div><small>${esc(r.campaigns || '')}</small></div></div></td>
+      <td><span class="mail">${esc(r.email)}</span>${chk.status ? `<small><span class="pill ${chk.status === 'ok' ? 'ok' : chk.status === 'riskli' ? 'warn' : 'bad'}" title="${esc(chk.reason)}">${chk.status === 'ok' ? 'doğrulandı' : esc(chk.status)}</span></small>` : ''}</td>
+      <td class="hide-m">${r.blocked ? pill('engelli') : r.replied ? pill('yanıtladı') : r.last_status ? pill(r.last_status) : '<span class="mut">yeni</span>'}${r.last_sent ? `<small>${fmtDate(r.last_sent)}</small>` : ''}</td>
+      <td><select data-tp="${r.id}" style="height:34px">${tplOpts(choice[r.id])}</select></td></tr>`; }).join('')}</tbody></table></div>`
+      : empty('Bu filtrede maili olan kişi yok', 'Kampanyalardan ya da Kişi Ara\'dan mail bulduğunda burada listelenir.');
+    upd();
+  };
+  let t; $('mlq').oninput = e => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value; draw(); }, 300); };
+  $('mls').onclick = e => { const b = e.target.closest('[data-s]'); if (!b) return; f.state = b.dataset.s; $('mls').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); draw(); };
+  main.onchange = e => {
+    if (e.target.id === 'mlc') { f.campaign = e.target.value; return draw(); }
+    if (e.target.id === 'mlP') { personal = e.target.checked; try { localStorage.setItem('personal', personal ? '1' : '0'); } catch {} return; }
+    if (e.target.id === 'mlA') main.querySelectorAll('[data-ml]:not(:disabled)').forEach(x => x.checked = e.target.checked);
+    const tp = e.target.closest('[data-tp]'); if (tp) { choice[tp.dataset.tp] = tp.value; const cb = main.querySelector(`[data-ml="${tp.dataset.tp}"]`); if (cb && tp.value && !cb.disabled) cb.checked = true; }
+    upd();
+  };
+  $('mlAll').onchange = e => { const v = e.target.value; if (!v) return; const s = ids(); if (!s.length) { toast('Önce kişi seç', true); e.target.value = ''; return; } s.forEach(id => setTpl(id, v)); e.target.value = ''; toast(`${s.length} kişiye şablon atandı`); };
+  $('mlAuto').onclick = () => { const s = ids().length ? ids() : rows.filter(r => !r.blocked).map(r => r.id); let n = 0; for (const id of s) { const v = autoTpl(rows.find(x => x.id === id)); if (v) { setTpl(id, v); n++; } } toast(`${n} kişiye unvanına göre şablon seçildi`); };
+  $('mlAB').onclick = () => {
+    const s = ids(); if (s.length < 2) return toast('A/B için en az 2 kişi seç', true);
+    modal('A/B şablon testi', `<p class="mut" style="margin-top:0">Seçili ${s.length} kişiye iki şablon dönüşümlü atanır. İkisi de 15+ gönderime ulaştığında yanıt oranı yüksek olana otomatik %70 pay verilir.</p>
+      <div class="grid g2"><label>Şablon A<select id="abA">${tplOpts('')}</select></label><label>Şablon B<select id="abB">${tplOpts('')}</select></label></div>
+      <div id="abInfo" class="mut" style="margin-top:10px;font-size:12.5px"></div><div class="row" style="margin-top:14px"><span class="sp"></span><button class="btn pri" id="abGo">Ata</button></div>`, b => {
+      const info = () => { const a = +b.querySelector('#abA').value, bb = +b.querySelector('#abB').value; const A = TSTATS[a], B = TSTATS[bb];
+        b.querySelector('#abInfo').textContent = a && bb ? `A: ${A?.sent || 0} gönderim, %${A?.rate || 0} yanıt · B: ${B?.sent || 0} gönderim, %${B?.rate || 0} yanıt` : ''; };
+      b.onchange = info;
+      b.querySelector('#abGo').onclick = () => { const a = b.querySelector('#abA').value, bb = b.querySelector('#abB').value; if (!a || !bb || a === bb) return toast('İki farklı şablon seç', true);
+        const { map, wa } = abSplit(s, a, bb); Object.entries(map).forEach(([id, v]) => setTpl(+id, v)); closeModal(); toast(`A/B atandı (A %${Math.round(wa * 100)} / B %${Math.round((1 - wa) * 100)})`); };
+    });
+  };
+  $('mlPrev').onclick = tryT(async () => {
+    const id = ids()[0] || rows[0]?.id, tp = choice[id]; if (!id || !tp) return toast('Şablonu seçilmiş bir kişi seç', true);
+    const T = TPLS.find(x => x.id === +tp), who = rows.find(x => x.id === id);
+    modal('Önizleme · ' + (who?.name || ''), `<div id="pvBox"><p class="mut"><span class="spin"></span> ${personal ? 'AI firmayı araştırıp kişisel cümle yazıyor…' : 'Hazırlanıyor…'}</p></div>`);
+    let opener = '';
+    if (personal) { try { opener = (await post('/api/ai/opener', { contact_id: id, lang: /^EN/.test(T.name) ? 'English' : 'Türkçe' })).opener || ''; } catch {} }
+    const body = personal && opener ? (T.body.includes('{{kisisel}}') ? T.body.replace(/\{\{\s*kisisel\s*\}\}/, opener) : T.body.replace(/^([^\n]{0,80}[,!:])\s*\n\s*\n/, `$1\n\n${opener}\n\n`)) : T.body.replace(/\{\{\s*kisisel\s*\}\}\n*/g, '');
+    const r = await post('/api/mail/preview', { subject: T.subject, body, contact_id: id });
+    if ($('pvBox')) $('pvBox').innerHTML = `${personal ? (opener ? `<div class="banner ok">✨ Kişisel cümle: “${esc(opener)}”</div>` : '<div class="banner">Bu firma için güvenilir bir güncel bilgi bulunamadı — mail şablonla aynen gider.</div>') : ''}
+      <div class="preview"><b>${esc(r.subject)}</b><hr style="border:0;border-top:1px solid #eee">${r.html}</div>`;
+  });
+  $('mlGo').onclick = e => busyBtn(e.currentTarget, async () => {
+    const s = ids(); if (!s.length) return toast('Kişi seç', true);
+    const missing = s.filter(id => !choice[id]); if (missing.length) return toast(`${missing.length} kişiye şablon seçilmedi ("Seçilenlere şablon", "Unvana göre" ya da "A/B")`, true);
+    const st2 = await api('/api/sending');
+    if (!confirm(`${s.length} kişi kuyruğa alınacak${personal ? ' (kişiye özel ilk cümleyle)' : ''}.\n\nGmail'i korumak için bugün en fazla ${Math.max(0, st2.daily - st2.today)} mail daha gider (${st2.senders?.length || 0} hesap, toplam limit ${st2.daily}${st2.warmup ? ', ısınma modu' : ''}); mailler arası 2–5 dk beklenir, aynı firmaya günde en fazla 2 mail gider. Kalanlar sonraki iş günlerine kalır. Göndermeden önce her adres doğrulanır.\n\nDevam?`)) return;
+    const r = await post('/api/outbox/compose-multi', { items: s.map(id => ({ contact_id: id, template_id: +choice[id] })), send: true, personal });
+    const why = {}; r.skipped.forEach(x => why[x.why] = (why[x.why] || 0) + 1);
+    toast(`${r.added} mail kuyruğa alındı${r.risky ? ` (${r.risky} riskli adres)` : ''}${r.skipped.length ? ' · atlanan: ' + Object.entries(why).map(([k, v]) => `${v} ${k}`).join(', ') : ''}`);
+    draw();
+  }, 'Doğrulanıyor');
+  await draw();
+});
+
+// ================= Şablonlar (+ performans) =================
+PAGES.templates = tryT(async (sel) => {
+  const [tp, st] = await Promise.all([api('/api/templates'), api('/api/templates/stats')]);
+  TPLS = tp; TSTATS = Object.fromEntries(st.map(x => [x.id, x]));
+  const best = st.filter(x => x.sent >= 10).sort((a, b) => b.rate - a.rate)[0];
+  let cur = TPLS.find(t => t.id === +sel) || TPLS[0] || { id: 0, name: '', subject: '', body: '' };
+  const draw = () => {
+    main.innerHTML = head('Mail Şablonları', 'Değişkenler alıcıya göre dolar: {{ad}} {{adsoyad}} {{sirket}} {{unvan}} {{gonderen}}. {{kisisel}} yazarsan AI\'ın kişisel cümlesi tam oraya girer (yazmazsan selamlamanın altına eklenir). İmzan otomatik eklenir.', '<button class="btn pri" id="tNew">＋ Yeni şablon</button>') +
+    `<div class="grid" style="grid-template-columns:minmax(240px,340px) 1fr;align-items:start" id="tGrid">
+      <div class="card" style="padding:8px">${TPLS.map(t => { const s = TSTATS[t.id] || {}; return `<a class="step" href="#templates/${t.id}" style="margin:4px;color:inherit;text-decoration:none;${t.id === cur.id ? 'border-color:var(--txt);box-shadow:var(--sh2)' : ''}">
+        <span><span style="display:block;font-weight:550">${esc(t.name)}${best?.id === t.id ? ' 🏆' : ''}</span><small class="mut">${s.sent ? `${s.sent} gönderim · %${s.rate} yanıt · %${s.prate} olumlu` : 'henüz gönderilmedi'}</small></span></a>`; }).join('') || '<p class="mut" style="padding:12px">Şablon yok</p>'}</div>
+      <div class="card"><label>Şablon adı<input id="tN" value="${esc(cur.name)}"></label><label style="margin-top:10px">Konu<input id="tS" value="${esc(cur.subject)}"></label>
+        <label style="margin-top:10px">İçerik<textarea id="tB" rows="16">${esc(cur.body)}</textarea></label>
+        <div class="chips" style="margin-top:8px">${[...VARS, 'kisisel'].map(v => `<span class="chip var" data-v="${v}">{{${v}}}</span>`).join('')}</div>
+        <div class="row" style="margin-top:14px"><button class="btn pri" id="tSv">Kaydet</button><button class="btn" id="tPv">Önizle</button><span class="sp"></span>${cur.id ? '<button class="btn danger" id="tDl">Sil</button>' : ''}</div>
+        <div id="tPo" style="margin-top:12px"></div></div></div>`;
+    if (innerWidth < 860) $('tGrid').style.gridTemplateColumns = '1fr';
+    let focus = $('tB'); $('tS').onfocus = e => focus = e.target; $('tB').onfocus = e => focus = e.target;
+    main.onclick = e => { const v = e.target.closest('[data-v]'); if (v) { const p = focus.selectionStart ?? focus.value.length; focus.value = focus.value.slice(0, p) + `{{${v.dataset.v}}}` + focus.value.slice(focus.selectionEnd ?? p); focus.focus(); } };
+    $('tNew').onclick = () => { cur = { id: 0, name: 'Yeni şablon', subject: '', body: 'Sayın {{adsoyad}},\n\n{{kisisel}}\n\n\n\nSaygılarımla,\n{{gonderen}}' }; draw(); };
+    $('tSv').onclick = tryT(async () => {
+      await post('/api/templates', { id: cur.id || undefined, name: $('tN').value, subject: $('tS').value, body: $('tB').value });
+      TPLS = await api('/api/templates'); cur = TPLS.find(t => t.name === $('tN').value) || TPLS[0]; toast('Şablon kaydedildi'); draw();
+    });
+    $('tPv').onclick = tryT(async () => { const r = await post('/api/mail/preview', { subject: $('tS').value, body: $('tB').value.replace(/\{\{\s*kisisel\s*\}\}/, '[AI kişisel cümlesi buraya gelecek]') }); $('tPo').innerHTML = `<div class="preview"><b>${esc(r.subject)}</b><hr style="border:0;border-top:1px solid #eee">${r.html}</div>`; });
+    if ($('tDl')) $('tDl').onclick = tryT(async () => { if (!confirm('Şablon silinsin mi?')) return; await del('/api/templates/' + cur.id); TPLS = await api('/api/templates'); cur = TPLS[0] || { id: 0, name: '', subject: '', body: '' }; draw(); });
+  };
+  draw();
+});
 
 boot();

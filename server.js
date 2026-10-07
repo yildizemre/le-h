@@ -262,24 +262,29 @@ app.post('/api/campaigns/:id/leads/stage', auth, (req, res) => {
 
 // ---------------- Lookup queue ----------------
 app.post('/api/queue/lookup', auth, (req, res) => {
-  let n = 0;
-  for (const cid of req.body.contact_ids || []) {
-    const c = get('SELECT id,email FROM contacts WHERE id=?', +cid); if (!c || c.email) continue;
-    n += worker.enqueue('lookup', { contact_id: c.id }, req.body.campaign_id || null, req.user.id) ? 1 : 0;
+  let n = 0; const skip = { 'maili zaten var': 0, 'daha önce sorgulandı': 0, 'zaten kuyrukta': 0 };
+  for (const cid of [...new Set(req.body.contact_ids || [])]) {
+    const c = get('SELECT id,email,status FROM contacts WHERE id=?', +cid); if (!c) continue;
+    if (c.email) { skip['maili zaten var']++; continue; }
+    if (worker.LOOKED.includes(c.status) && !req.body.force) { skip['daha önce sorgulandı']++; continue; }
+    const q = worker.enqueue('lookup', { contact_id: c.id, ...(req.body.force ? { force: 1 } : {}) }, req.body.campaign_id || null, req.user.id);
+    if (!q) { skip['zaten kuyrukta']++; continue; }
+    n++;
     if (req.body.campaign_id) run("UPDATE leads SET stage='mail kuyrukta' WHERE campaign_id=? AND contact_id=? AND stage IN ('aday','mail yok')", +req.body.campaign_id, c.id);
   }
   for (const p of req.body.people || []) { // { name, company, linkedin }
     if (!p.name && !p.linkedin) continue;
     n += worker.enqueue('manual_find', { name: p.name || '', company: p.company || '', linkedin: p.linkedin || '' }, req.body.campaign_id || null, req.user.id) ? 1 : 0;
   }
-  worker.loop(); res.json({ queued: n });
+  worker.loop(); res.json({ queued: n, skipped: skip });
 });
 app.post('/api/queue/rr', auth, (req, res) => { // arama sonucundan (rr_id) kuyruğa ekle
   let n = 0;
   for (const p of req.body.profiles || []) {
     const cid = rr.saveCandidate({ id: p.rr_id, name: p.name, current_title: p.title, current_employer: p.company, current_employer_domain: p.domain, location: p.location, linkedin_url: p.linkedin }, req.user.id, 'arama');
     if (req.body.campaign_id) run('INSERT OR IGNORE INTO leads(campaign_id,contact_id,stage) VALUES(?,?,?)', +req.body.campaign_id, cid, 'mail kuyrukta');
-    if (!get('SELECT email FROM contacts WHERE id=?', cid).email) n += worker.enqueue('lookup', { contact_id: cid }, req.body.campaign_id || null, req.user.id) ? 1 : 0;
+    const c = get('SELECT email,status FROM contacts WHERE id=?', cid);
+    if (!c.email && !worker.LOOKED.includes(c.status)) n += worker.enqueue('lookup', { contact_id: cid }, req.body.campaign_id || null, req.user.id) ? 1 : 0;
   }
   worker.loop(); res.json({ queued: n });
 });

@@ -37,6 +37,7 @@ const li = u => u ? `<a class="li" href="${esc(/^https?:/.test(u) ? u : 'https:/
 const J = v => { try { const a = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(a) ? a : []; } catch { return []; } };
 const PILL = { ok: /mail (var|bulundu)|gönderildi|bitti|yanıtladı|kişi bulundu|aktif|done/, warn: /emin|limit|paused|bekle|sırada|kuyruk|aranıyor|taslak|çalışıyor|takip/, bad: /hata|bulunamad|cancel|iptal|mail yok|kişi yok|engel|durdur/, info: /aday|yeni/ };
 const pill = s => { s = String(s || ''); const c = Object.keys(PILL).find(k => PILL[k].test(s)) || ''; return `<span class="pill ${c}">${esc(s || '—')}</span>`; };
+const lookupMsg = r => { const sk = Object.entries(r.skipped || {}).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`); return `${r.queued} kişi mail aramasına alındı${sk.length ? ' · atlandı: ' + sk.join(', ') : ''}`; };
 const empty = (t, s = '') => `<div class="card empty"><b>${t}</b>${s}</div>`;
 
 // ---------------- Modal ----------------
@@ -105,12 +106,13 @@ $('theme').onclick = () => {
   const next = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; try { localStorage.setItem('theme', next); } catch {}
 };
 const drawer = open => { $('side').classList.toggle('open', open); $('scrim').classList.toggle('open', open); };
-$('burger').onclick = () => drawer(true); $('scrim').onclick = () => drawer(false);
+$('scrim').onclick = () => drawer(false);
+$('tabbar').onclick = e => { const a = e.target.closest('a[data-p]'); if (!a) return; e.preventDefault(); if (a.dataset.p === 'menu') drawer(true); else { location.hash = a.dataset.p; drawer(false); } };
 $('nav').onclick = e => { const a = e.target.closest('a[data-p]'); if (a) { location.hash = a.dataset.p; drawer(false); } };
 addEventListener('hashchange', () => ME && route());
 function markNav() {
   let h = decodeURIComponent(location.hash.slice(1) || 'dash'); if (h.startsWith('c/')) h = 'campaigns'; if (h.startsWith('templates/')) h = 'templates';
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', h === a.dataset.p || h.startsWith(a.dataset.p + '/')));
+  document.querySelectorAll('#nav a, #tabbar a').forEach(a => a.classList.toggle('on', h === a.dataset.p || h.startsWith(a.dataset.p + '/') || (a.dataset.p === 'contacts' && h === 'favs') || (a.dataset.p === 'search' && h === 'history')));
 }
 let timer;
 function route() {
@@ -273,7 +275,7 @@ async function companyModal(id, campId, onChange) {
       <td>${p.email ? `<span class="mail">${esc(p.email)}</span>` : pill(p.stage)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="mut">Henüz kişi yok. "Yetkilileri bul" ile RocketReach\'te ara.</p>'}`, b => {
     const done = msg => { toast(msg); closeModal(); onChange?.(); };
     b.querySelector('#cmP').onclick = tryT(async () => { const r = await post('/api/companies/people', { ids: [id], max: 5 }); done(r.queued ? 'Yetkili araması kuyruğa alındı' : 'Zaten kuyrukta'); });
-    if (b.querySelector('#cmL')) b.querySelector('#cmL').onclick = tryT(async () => { const r = await post('/api/queue/lookup', { contact_ids: co.people.filter(p => !p.email).map(p => p.id), campaign_id: campId }); done(r.queued + ' kişi mail kuyruğunda'); });
+    if (b.querySelector('#cmL')) b.querySelector('#cmL').onclick = tryT(async () => { const r = await post('/api/queue/lookup', { contact_ids: co.people.filter(p => !p.email).map(p => p.id), campaign_id: campId }); done(lookupMsg(r)); });
     if (b.querySelector('#cmD')) b.querySelector('#cmD').onclick = tryT(async () => { const r = await post('/api/outbox/draft', { contact_ids: co.people.filter(p => p.email).map(p => p.id), campaign_id: campId }); done(r.queued + ' AI taslak yazılıyor → Mailler'); });
   });
 }
@@ -450,7 +452,7 @@ CTAB.people = async (c, el) => {
       const b = e.target.closest('[data-a]'); if (!b) return;
       const sel2 = ids(); if (!sel2.length) return toast('Önce kişi seç', true);
       const rows = all.filter(x => sel2.includes(x.id));
-      if (b.dataset.a === 'lookup') { const r = await post('/api/queue/lookup', { contact_ids: sel2, campaign_id: c.id }); toast(`${r.queued} kişi mail aramasına alındı`); }
+      if (b.dataset.a === 'lookup') { const r = await post('/api/queue/lookup', { contact_ids: sel2, campaign_id: c.id }); toast(lookupMsg(r)); }
       if (b.dataset.a === 'draft') { const ok = rows.filter(x => x.email).map(x => x.id); if (!ok.length) return toast('Seçilenlerin maili yok', true); const r = await post('/api/outbox/draft', { contact_ids: ok, campaign_id: c.id }); toast(`${r.queued} AI taslak yazılıyor → Mailler sekmesi`); }
       if (b.dataset.a === 'compose') return composeModal(rows.filter(x => x.email).map(x => x.id), c.id);
       if (b.dataset.a === 'replied') await post(`/api/campaigns/${c.id}/leads/stage`, { contact_ids: sel2, stage: 'yanıtladı' });
@@ -537,7 +539,7 @@ async function composeModal(contactIds, campaignId) {
 // ================= Kişi Ara =================
 let lastSearch = null;
 PAGES.search = () => {
-  main.innerHTML = head('Kişi Ara', 'RocketReach veritabanında ara. Virgülle birden fazla değer yazabilirsin. Arama ücretsiz; mail için lookup harcanır.') +
+  main.innerHTML = head('Kişi Ara', 'RocketReach veritabanında ara. Virgülle birden fazla değer yazabilirsin. Arama ücretsiz; mail için lookup harcanır.', '<a class="btn" href="#history">↺ Arama geçmişi</a>') +
   `<form class="card" id="sf"><div class="grid g3">
     <label>Ad Soyad<input name="name" placeholder="ör. Celil Hekimoğlu"></label><label>Şirket<input name="company" placeholder="ör. Farplas"></label>
     <label>Şirket alan adı<input name="domain" placeholder="ör. farplas.com"></label><label>Unvan<input name="title" placeholder="ör. İSG Müdürü, Plant Manager"></label>
@@ -606,7 +608,7 @@ PAGES.favs = () => contactsPage(true);
 PAGES.contacts = () => contactsPage(false);
 function contactsPage(favOnly) {
   const addTo = sessionStorage.getItem('addToCamp');
-  main.innerHTML = head(favOnly ? 'Favoriler' : 'Kişilerim', favOnly ? 'Yıldızladığın kişiler' : 'Ekibin bulduğu tüm kişiler — kampanyadan, aramadan ve Excel\'den') +
+  main.innerHTML = head(favOnly ? 'Favoriler' : 'Kişilerim', favOnly ? 'Yıldızladığın kişiler' : 'Ekibin bulduğu tüm kişiler — kampanyadan, aramadan ve Excel\'den', `<div class="tabs"><a href="#contacts" class="${favOnly ? '' : 'on'}">Tümü</a><a href="#favs" class="${favOnly ? 'on' : ''}">★ Favoriler</a></div>`) +
   `${addTo ? `<div class="banner info">Kampanyaya eklemek için kişileri seç ve aşağıdan "Kampanyaya ekle"ye bas. <a href="#" id="cancelAdd">vazgeç</a></div>` : ''}
   <div class="row" style="margin-bottom:12px"><input id="cq" placeholder="İsim, şirket, unvan, mail, sektör…" style="max-width:360px">
     <div class="tabs" id="cf"><button data-v="" class="on">Tümü</button><button data-v="1">Maili olan</button><button data-v="0">Maili olmayan</button></div><span class="sp"></span>
@@ -646,7 +648,7 @@ function renderContacts(list) {
     const ids = [...sel];
     if (a.dataset.a === 'clear') { sel.clear(); document.querySelectorAll('[data-sel]').forEach(x => x.checked = false); return upd(); }
     if (!ids.length) return toast('Önce kişi seç', true);
-    if (a.dataset.a === 'lookup') { const r = await post('/api/queue/lookup', { contact_ids: ids }); toast(`${r.queued} kişi mail kuyruğuna alındı (maili olanlar atlandı)`); }
+    if (a.dataset.a === 'lookup') { const r = await post('/api/queue/lookup', { contact_ids: ids }); toast(lookupMsg(r)); }
     if (a.dataset.a === 'camp') { const cid = $('sCamp').value; if (!cid) return toast('Kampanya seç', true); const r = await post(`/api/campaigns/${cid}/leads`, { contact_ids: ids }); toast(`${r.added} kişi kampanyaya eklendi`); sessionStorage.removeItem('addToCamp'); sel.clear(); location.hash = `c/${cid}/people`; }
     if (a.dataset.a === 'mail') composeModal(list.filter(c => sel.has(c.id) && c.email).map(c => c.id), $('sCamp').value || null);
   });
@@ -781,7 +783,7 @@ PAGES.suppress = tryT(async () => {
 const FL = { name: 'İsim', company: 'Şirket', title: 'Unvan', industry: 'Sektör', location: 'Lokasyon', keyword: 'Kelime', domain: 'Alan adı' };
 PAGES.history = tryT(async () => {
   const h = await api('/api/history');
-  main.innerHTML = head('Arama Geçmişi', 'Ekibin yaptığı aramalar. "Tekrar ara" ile aynı aramayı çalıştır.') +
+  main.innerHTML = head('Arama Geçmişi', 'Ekibin yaptığı aramalar. "Tekrar ara" ile aynı aramayı çalıştır.', '<a class="btn" href="#search">← Kişi Ara</a>') +
   (h.length ? `<div class="tw"><table><thead><tr><th>Arama</th><th>Sonuç</th><th class="hide-m">Kim</th><th>Ne zaman</th><th></th></tr></thead><tbody>
   ${h.map(s => { const f = JSON.parse(s.params); return `<tr><td><div class="chips">${Object.entries(f).filter(([k, v]) => v && k !== 'page').map(([k, v]) => `<span class="pill pri">${FL[k] || k}: ${esc(v)}</span>`).join('')}</div></td>
     <td>${(s.total || 0).toLocaleString('tr')}</td><td class="hide-m">${esc(s.user)}</td><td class="mut">${fmtDate(s.created)}</td>

@@ -1,54 +1,97 @@
 <!doctype html>
 <html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Lead-AI · Computer Vision</title>
+<title>Lead-AI · Hype Vision</title>
 <meta name="theme-color" content="#0b1220">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%235b5bf7'/%3E%3Cstop offset='1' stop-color='%23a855f7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M10 8v16h12' stroke='white' stroke-width='3.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="32x32" href="img/icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="img/icon-192.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script>try{const t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch{}</script>
 </head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V3m-5 5 5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13h5l2 3h4l2-3h5"/><path d="M5 5h14l2 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></symbol>
+  <symbol id="i-queue" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M7 8h10v4a5 5 0 0 1-10 0zM12 17v4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M3 21h18M8 7h4M8 11h4M8 15h4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/></symbol>
+</svg>
+
 <div id="login" class="login hide">
-  <form class="login-card" id="lf">
-    <img src="https://hypevisionlab.com/hypevisionlogo.png" alt="Hype Vision" class="hvlogo big">
-    <div class="brand big"><span>Lead<b>-AI</b></span><small class="cv">Computer Vision</small></div>
-    <p class="mut" style="margin:0">Firma bul, yetkiliyi ve mailini çıkar, Gmail'i yakmadan gönder.</p>
-    <label>Kullanıcı adı<input id="u" autocomplete="username" autocapitalize="none" required></label>
-    <label>Şifre<input id="p" type="password" autocomplete="current-password" required></label>
-    <button class="btn pri w100 lg">Giriş yap</button><p id="le" class="err"></p>
-  </form>
+  <section class="login-hero">
+    <img src="img/logo-light.png" alt="Hype Vision" class="hero-logo">
+    <div>
+      <h1>Doğru firmayı bul.<br>Doğru kişiye ulaş.</h1>
+      <p>Lead-AI hedef fabrikaları yapay zekâ ile bulur, yetkilileri ve maillerini çıkarır, Gmail hesabını yormadan kişiye özel mailleri sırayla gönderir.</p>
+      <ul>
+        <li><span>1</span>Sektör ya da şehir yaz, firmalar listelensin</li>
+        <li><span>2</span>Yetkililer ve mailleri otomatik bulunsun</li>
+        <li><span>3</span>Şablon seç, güvenli kuyrukla gönder</li>
+      </ul>
+    </div>
+    <small>© Hype Vision · GTÜ Teknopark, Gebze</small>
+  </section>
+  <section class="login-side">
+    <form class="login-card" id="lf">
+      <img src="img/logo-dark.png" alt="Hype Vision" class="lc-logo only-light"><img src="img/logo-light.png" alt="Hype Vision" class="lc-logo only-dark">
+      <div><h2>Lead-AI'a giriş yap</h2><p class="mut" style="margin:4px 0 0">Ekip hesabınla devam et</p></div>
+      <label>Kullanıcı adı<input id="u" autocomplete="username" autocapitalize="none" required></label>
+      <label>Şifre<input id="p" type="password" autocomplete="current-password" required></label>
+      <button class="btn pri w100 lg">Giriş yap</button><p id="le" class="err"></p>
+    </form>
+  </section>
 </div>
+
 <div id="shell" class="shell hide">
-  <header class="topbar"><button class="icon" id="burger" aria-label="Menü">☰</button><div class="brand"><span>Lead<b>-AI</b></span><small class="cv">CV</small></div><span class="sp"></span><span id="tbLimit"></span></header>
+  <header class="topbar"><img src="img/logo-dark.png" alt="Hype Vision" class="tb-logo only-light"><img src="img/logo-light.png" alt="Hype Vision" class="tb-logo only-dark"><span class="tb-app">Lead-AI</span><span class="sp"></span><span id="tbLimit"></span></header>
   <div class="scrim" id="scrim"></div>
   <aside class="side" id="side">
-    <div class="sidehead"><img src="https://hypevisionlab.com/hypevisionlogo.png" alt="Hype Vision" class="hvlogo"><div class="brand"><span>Lead<b>-AI</b></span><small class="cv">Computer Vision</small></div></div>
+    <div class="sidehead"><img src="img/logo-dark.png" alt="Hype Vision" class="sb-logo only-light"><img src="img/logo-light.png" alt="Hype Vision" class="sb-logo only-dark"><span class="appname">Lead-AI</span></div>
     <nav id="nav">
-      <a data-p="dash"><i>◧</i>Panel</a>
-      <a data-p="project"><i>◈</i>Şirket Profili</a>
-      <div class="navh">Hedef</div>
-      <a data-p="newcamp" class="cta"><i>＋</i>Firma Bul / Yeni Kampanya</a>
-      <a data-p="campaigns"><i>▤</i>Kampanyalar <span class="badge" id="bC"></span></a>
+      <a data-p="newcamp" class="cta"><svg><use href="#i-plus"/></svg>Firma Bul / Yeni Kampanya</a>
+      <a data-p="dash"><svg><use href="#i-home"/></svg>Panel</a>
+      <a data-p="campaigns"><svg><use href="#i-layers"/></svg>Kampanyalar <span class="badge" id="bC"></span></a>
       <div class="navh">Kişiler</div>
-      <a data-p="search"><i>⌕</i>Kişi Ara</a>
-      <a data-p="contacts"><i>☰</i>Kişilerim</a>
-      <a data-p="favs"><i>★</i>Favoriler</a>
-      <a data-p="bulk"><i>⇪</i>Toplu Excel</a>
-      <a data-p="history"><i>↺</i>Arama Geçmişi</a>
-      <div class="navh">Gönderim</div>
-      <a data-p="maillist"><i>✉</i>Mail Listesi</a>
-      <a data-p="templates"><i>✎</i>Şablonlar</a>
-      <a data-p="outbox"><i>⇄</i>Mail Kutusu <span class="badge" id="bOut"></span></a>
-      <a data-p="queue"><i>⧗</i>İş Kuyruğu <span class="badge" id="bQ"></span></a>
-      <a data-p="schedule"><i>◷</i>Gönderim Takvimi</a>
-      <a data-p="suppress"><i>⊘</i>Engel Listesi</a>
-      <div class="navh">Sistem</div>
-      <a data-p="settings"><i>⚙</i>Entegrasyonlar</a>
-      <a data-p="users" class="adm"><i>⚇</i>Kullanıcılar</a>
+      <a data-p="search"><svg><use href="#i-search"/></svg>Kişi Ara</a>
+      <a data-p="contacts"><svg><use href="#i-users"/></svg>Kişilerim</a>
+      <a data-p="bulk"><svg><use href="#i-upload"/></svg>Toplu Excel</a>
+      <div class="navh">Mail</div>
+      <a data-p="maillist"><svg><use href="#i-mail"/></svg>Mail Listesi</a>
+      <a data-p="templates"><svg><use href="#i-file"/></svg>Şablonlar</a>
+      <a data-p="outbox"><svg><use href="#i-inbox"/></svg>Mail Kutusu <span class="badge" id="bOut"></span></a>
+      <a data-p="queue"><svg><use href="#i-queue"/></svg>İş Kuyruğu <span class="badge" id="bQ"></span></a>
+      <div class="navh">Ayarlar</div>
+      <a data-p="project"><svg><use href="#i-building"/></svg>Şirket Profili</a>
+      <a data-p="schedule"><svg><use href="#i-clock"/></svg>Gönderim Takvimi</a>
+      <a data-p="suppress"><svg><use href="#i-ban"/></svg>Engel Listesi</a>
+      <a data-p="settings"><svg><use href="#i-plug"/></svg>Entegrasyonlar</a>
+      <a data-p="users" class="adm"><svg><use href="#i-user"/></svg>Kullanıcılar</a>
     </nav>
     <div class="me"><div class="av" id="av"></div><div><b id="meName"></b><small id="meRole" class="mut"></small></div>
-      <button class="icon" id="theme" title="Tema">◐</button><button class="icon" id="out" title="Çıkış">⎋</button></div>
+      <button class="icon" id="theme" title="Tema"><svg><use href="#i-moon"/></svg></button><button class="icon" id="out" title="Çıkış"><svg><use href="#i-logout"/></svg></button></div>
   </aside>
   <main id="main"></main>
+  <nav class="tabbar" id="tabbar">
+    <a data-p="dash"><svg><use href="#i-home"/></svg><span>Panel</span></a>
+    <a data-p="campaigns"><svg><use href="#i-layers"/></svg><span>Kampanya</span></a>
+    <a data-p="newcamp" class="tb-cta" aria-label="Firma bul"><svg><use href="#i-plus"/></svg></a>
+    <a data-p="maillist"><svg><use href="#i-mail"/></svg><span>Mail</span></a>
+    <a data-p="menu" id="tbMenu"><svg><use href="#i-menu"/></svg><span>Menü</span></a>
+  </nav>
 </div>
 <div id="modal" class="modal hide"><div class="modal-box"><div class="modal-head"><h3 id="mTitle"></h3><button class="icon" id="mClose">✕</button></div><div id="mBody"></div></div></div>
 <div id="toasts"></div>

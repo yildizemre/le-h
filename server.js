@@ -201,6 +201,40 @@ app.post('/api/auto-daily/run', auth, wrap(async (req, res) => { const r = await
 // Kullanım: RocketReach bütçe + OpenAI maliyeti
 app.get('/api/usage', auth, wrap(async (req, res) => res.json({ rr: await rr.lookupBudget(), rr_month_budget: +setting('rr_month_budget') || 0, ai: ai.usage(30) })));
 app.put('/api/usage', auth, admin, (req, res) => { setSetting('rr_month_budget', String(Math.max(0, +req.body.rr_month_budget || 0))); res.json({ ok: true }); });
+// Hedef birim filtresi (hangi unvanlar yetkili olarak alınır / alınmaz)
+app.get('/api/role-filter', auth, (req, res) => res.json({ ...worker.roleCfg(), defaults: worker.ROLE_DEF }));
+app.put('/api/role-filter', auth, admin, (req, res) => {
+  const clean = a => [...new Set((Array.isArray(a) ? a : []).map(s => String(s).trim()).filter(Boolean))];
+  setSetting('role_filter', JSON.stringify({ allow: clean(req.body.allow), block: clean(req.body.block) })); res.json({ ok: true });
+});
+// Mevcut listeyi kurallara göre temizle: mail gitmemiş kayıtlarda uygunsuz yetkiliyi çıkar (+ doğru kişiyi yeniden ara), üretici olmayan firmaları sil
+app.post('/api/cleanup/targets', auth, admin, (req, res) => {
+  const sentTo = cid => !!get("SELECT 1 FROM outbox WHERE contact_id=? AND status IN ('gönderildi','geri döndü')", cid);
+  let removedLeads = 0, requeued = 0, removedCos = 0;
+  const cfg = worker.roleCfg();
+  for (const l of all(`SELECT l.campaign_id, l.contact_id, l.company_id, c.title, k.kind FROM leads l JOIN contacts c ON c.id=l.contact_id JOIN campaigns k ON k.id=l.campaign_id`)) {
+    if (l.kind === 'partner' || worker.roleOk(l.title, cfg) || sentTo(l.contact_id)) continue;
+    run('DELETE FROM leads WHERE campaign_id=? AND contact_id=?', l.campaign_id, l.contact_id);
+    run("UPDATE outbox SET status='iptal', error='hedef birim dışı' WHERE contact_id=? AND campaign_id=? AND status IN ('sırada','taslak')", l.contact_id, l.campaign_id);
+    removedLeads++;
+    if (l.company_id && !get('SELECT 1 FROM leads WHERE company_id=?', l.company_id)) {
+      run("UPDATE companies SET status='kuyrukta', people=0 WHERE id=?", l.company_id);
+      if (req.body.requeue !== false && worker.enqueue('company_people', { company_id: l.company_id, more: 1 }, l.campaign_id, req.user.id)) requeued++;
+    }
+  }
+  for (const co of all(`SELECT co.*, k.kind FROM companies co JOIN campaigns k ON k.id=co.campaign_id WHERE k.kind<>'partner'`)) {
+    if (!worker.notProducer(co, co.domain)) continue;
+    const leads = all('SELECT contact_id FROM leads WHERE company_id=?', co.id);
+    if (leads.some(x => sentTo(x.contact_id))) continue;
+    for (const x of leads) run("UPDATE outbox SET status='iptal', error='üretici değil' WHERE contact_id=? AND status IN ('sırada','taslak')", x.contact_id);
+    run('DELETE FROM leads WHERE company_id=?', co.id); run('DELETE FROM companies WHERE id=?', co.id);
+    run("DELETE FROM tasks WHERE status='sırada' AND json_extract(payload,'$.company_id')=?", co.id);
+    removedCos++;
+  }
+  worker.loop();
+  event('info', `Liste temizlendi: ${removedLeads} uygunsuz yetkili çıkarıldı (${requeued} firmada doğru kişi aranıyor), ${removedCos} üretici olmayan firma kaldırıldı`);
+  res.json({ removedLeads, requeued, removedCos });
+});
 app.post('/api/ai/suggest', auth, wrap(async (req, res) => res.json(await ai.suggestCampaign(req.body.brief || ''))));
 
 app.post('/api/campaigns/:id/find-companies', auth, (req, res) => {

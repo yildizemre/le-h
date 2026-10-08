@@ -163,6 +163,7 @@ PAGES.project = tryT(async () => {
       <div class="chips" style="margin-top:8px">${INSTR.map(s => `<span class="chip sug" data-ins="${esc(s)}">+ ${esc(s)}</span>`).join('')}</div>
       <div class="row" style="margin-top:12px"><button type="button" class="btn" id="pv">Örnek maili önizle</button></div><div id="pvOut" style="margin-top:12px"></div></div>
   </div><div>
+    <div class="card" id="roleCard"></div>
     <div class="card"><h3>Yanıt bilgileri</h3><p class="hint">AI mail yazarken bunlara dayanır: fiyat, yetenekler, kanıt.</p><div class="grid">
       ${F('pricing', 'Fiyatlandırma', 'Kamera başı aylık … / pilot ücretsiz 30 gün', 2)}${F('capabilities', 'Yetenekler & entegrasyonlar', 'KKD tespiti, forklift-yaya yakınlık, ERP entegrasyonu, …', 3)}
       ${F('proof', 'Referanslar & vaka çalışmaları', 'X fabrikasında kaza bildirimlerinde %40 azalma…', 3)}${F('docs', 'Diğer belgeler / notlar', 'AI\'ın bilmesini istediğin her şey', 6)}</div></div>
@@ -171,6 +172,7 @@ PAGES.project = tryT(async () => {
   main.onclick = e => { const s = e.target.closest('[data-ins]'); if (s) { const t = $('instr'); t.value = (t.value.trim() ? t.value.trim() + '\n' : '') + '- ' + s.dataset.ins; } };
   const save = async () => { await put('/api/project', Object.fromEntries(new FormData(f))); };
   $('psave').onclick = e => busyBtn(e.currentTarget, async () => { await save(); toast('Profil kaydedildi'); }, 'Kaydediliyor');
+  roleCard($('roleCard'));
   $('research').onclick = e => busyBtn(e.currentTarget, async () => {
     const url = f.website.value || prompt('Web sitesi adresi'); if (!url) return;
     const r = await post('/api/project/research', { url });
@@ -1349,5 +1351,28 @@ PAGES.signals = tryT(async () => {
     const h = e.target.closest('[data-sh]'); if (h) { await put('/api/signals/' + h.dataset.sh, { status: 'gizli' }); h.closest('.idea').remove(); }
   });
 });
+
+
+// ================= Hedef birimler (yetkili filtresi) =================
+async function roleCard(el) {
+  const r = await api('/api/role-filter'), adm = ME.role === 'admin';
+  el.innerHTML = `<div class="card-h"><h3>🎯 Hedef birimler</h3><span class="pill ok">aktif</span></div>
+    <p class="hint">Firmada yetkili aranırken sadece unvanında <b>izinli</b> kelimelerden biri geçen ve <b>yasak</b> kelimelerden hiçbiri geçmeyen kişi alınır. Uygun kimse yoksa firma "uygun yetkili yok" olarak kalır; muhasebe/İK/satış gibi yanlış kişiye mail gitmez.
+      Normal kampanyalarda görüntü işleme, CCTV, yazılım, entegratör, OSGB, bayi firmaları da hiç listelenmez (çözüm ortağı kampanyası hariç).</p>
+    <label>✅ İzinli birim / unvan kelimeleri</label><div id="rlA" style="margin:6px 0 14px"></div>
+    <label>⛔ Yasak birim / unvan kelimeleri</label><div id="rlB" style="margin:6px 0 14px"></div>
+    <div class="row">${adm ? '<button class="btn pri" id="rlS">Kaydet</button><button class="btn" id="rlD">Varsayılana dön</button>' : ''}<span class="sp"></span>${adm ? '<button class="btn" id="rlC">🧹 Mevcut listeyi bu kurallara göre temizle</button>' : ''}</div>
+    <p class="mut" style="font-size:12px;margin:8px 0 0">Temizlik: mail gönderilmemiş kayıtlarda uygunsuz yetkili kampanyadan çıkarılır ve o firmada doğru kişi yeniden aranır; üretici olmayan firmalar kaldırılır. Mail gönderilmiş kayıtlara dokunulmaz.</p>`;
+  const A = chipInput($('rlA'), r.allow, { placeholder: 'kelime ekle, Enter' }), B = chipInput($('rlB'), r.block, { placeholder: 'kelime ekle, Enter' });
+  if (!adm) return;
+  $('rlS').onclick = tryT(async () => { await put('/api/role-filter', { allow: A.get(), block: B.get() }); toast('Hedef birimler kaydedildi'); });
+  $('rlD').onclick = () => { A.set(r.defaults.allow); B.set(r.defaults.block); toast('Varsayılan yüklendi — Kaydet\'e bas'); };
+  $('rlC').onclick = e => busyBtn(e.currentTarget, async () => {
+    if (!confirm('Mail gönderilmemiş kayıtlarda hedef birim dışındaki yetkililer çıkarılacak, üretici olmayan firmalar silinecek. Devam?')) return;
+    await put('/api/role-filter', { allow: A.get(), block: B.get() });
+    const x = await post('/api/cleanup/targets', {});
+    toast(`${x.removedLeads} uygunsuz yetkili çıkarıldı · ${x.requeued} firmada doğru kişi aranıyor · ${x.removedCos} üretici olmayan firma kaldırıldı`);
+  }, 'Temizleniyor');
+}
 
 boot();

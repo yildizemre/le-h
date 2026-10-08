@@ -508,15 +508,25 @@ app.get('/api/maillist', auth, (req, res) => {
     (SELECT group_concat(k.name, ', ') FROM leads l JOIN campaigns k ON k.id=l.campaign_id WHERE l.contact_id=c.id) AS campaigns,
     (SELECT o.status FROM outbox o WHERE o.contact_id=c.id ORDER BY o.id DESC LIMIT 1) AS last_status,
     (SELECT max(o.sent_at) FROM outbox o WHERE o.contact_id=c.id AND o.status='gönderildi') AS last_sent,
-    EXISTS(SELECT 1 FROM leads l WHERE l.contact_id=c.id AND l.stage='yanıtladı') AS replied
+    c.manual_sent, EXISTS(SELECT 1 FROM leads l WHERE l.contact_id=c.id AND l.stage='yanıtladı') AS replied
     FROM contacts c WHERE c.email<>''`;
   if (campaign) { sql += ' AND c.id IN (SELECT contact_id FROM leads WHERE campaign_id=?)'; a.push(+campaign); }
   if (q) { sql += ' AND (c.name LIKE ? OR c.company LIKE ? OR c.title LIKE ? OR c.email LIKE ?)'; a.push(...Array(4).fill('%' + q + '%')); }
   let rows = all(sql + ' ORDER BY c.updated DESC LIMIT 3000', ...a);
-  if (state === 'new') rows = rows.filter(r => !r.last_status || r.last_status === 'iptal');
-  if (state === 'sent') rows = rows.filter(r => r.last_sent);
+  if (state === 'new') rows = rows.filter(r => (!r.last_status || r.last_status === 'iptal') && !r.manual_sent);
+  if (state === 'sent') rows = rows.filter(r => r.last_sent || r.manual_sent);
   rows.forEach(r => r.blocked = mailer.suppressed(r));
   res.json(rows);
+});
+// Elle (kendi Gmail'inden, düzenleyerek) gönderilenleri işaretle: otopilot ve toplu gönderim bu kişilere bir daha yazmaz, sıradaki mailleri iptal edilir
+app.post('/api/contacts/manual', auth, (req, res) => {
+  const { ids = [], on = true } = req.body; let n = 0;
+  for (const id of ids.map(Number)) {
+    run('UPDATE contacts SET manual_sent=? WHERE id=?', on ? new Date().toISOString() : null, id);
+    if (on) run("UPDATE outbox SET status='iptal' WHERE contact_id=? AND status IN ('sırada','taslak')", id);
+    n++;
+  }
+  res.json({ n });
 });
 // Kişi başına şablon seçerek toplu kuyruk. Aynı kişiye 60 gün içinde ilk mail tekrar gitmez.
 app.post('/api/outbox/compose-multi', auth, wrap(async (req, res) => {
@@ -528,6 +538,7 @@ app.post('/api/outbox/compose-multi', auth, wrap(async (req, res) => {
     if (!c?.email) { out.skipped.push({ id: it.contact_id, why: 'mail yok' }); continue; }
     if (!t) { out.skipped.push({ id: c.id, why: 'şablon seçilmedi' }); continue; }
     if (mailer.suppressed(c)) { out.skipped.push({ id: c.id, why: 'engel listesinde' }); continue; }
+    if (c.manual_sent && !force) { out.skipped.push({ id: c.id, why: 'elle gönderilmiş' }); continue; }
     if (!force && get("SELECT 1 FROM outbox WHERE lower(to_email)=? AND step=0 AND (status IN ('sırada','taslak') OR (status='gönderildi' AND sent_at>=?))", c.email.toLowerCase(), since)) {
       out.skipped.push({ id: c.id, why: 'son 60 günde zaten mail gitti / kuyrukta' }); continue;
     }

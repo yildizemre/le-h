@@ -1130,7 +1130,7 @@ PAGES.maillist = tryT(async () => {
     <label class="inline" title="AI her firmanın sitesine/haberlerine bakıp mailin başına tek bir kişisel cümle ekler"><span class="switch"><input type="checkbox" id="mlP" ${personal ? 'checked' : ''}><i></i></span> ✨ Kişiye özel ilk cümle</label></div>
   <div id="mlt"></div>
   <div class="selbar"><b id="mlN">Kişi seç</b><span class="sp"></span><select id="mlAll" style="max-width:250px">${tplOpts('', 'Seçilenlere şablon…')}</select>
-    <button class="btn" id="mlAuto">✨ Unvana göre</button><button class="btn" id="mlAB">A/B</button><button class="btn" id="mlPrev">Önizle</button><button class="btn" id="mlGo">✉ Kuyruğa al</button></div>`;
+    <button class="btn" id="mlAuto">✨ Unvana göre</button><button class="btn" id="mlAB">A/B</button><button class="btn" id="mlPrev">Önizle</button><button class="btn" id="mlGo">✉ Kuyruğa al</button><button class="btn" id="mlMan" title="Kendi Gmail'inden düzenleyip gönderdiysen işaretle: sistem bu kişilere bir daha otomatik yazmaz">✍ Elle gönderdim</button></div>`;
   const ids = () => [...main.querySelectorAll('[data-ml]:checked')].map(x => +x.dataset.ml);
   const upd = () => { const n = ids().length; $('mlN').textContent = n ? `${n} kişi seçili` : 'Kişi seç'; };
   const setTpl = (id, v) => { choice[id] = v; const el = main.querySelector(`[data-tp="${id}"]`); if (el) el.value = v; };
@@ -1141,7 +1141,7 @@ PAGES.maillist = tryT(async () => {
       <td class="w"><div class="ent">${avatar(r.name)}<div><div class="n">${esc(r.name)} ${li(r.linkedin)}</div><small>${esc(r.title)}</small></div></div></td>
       <td><div class="ent">${favicon(r.domain || String(r.email).split('@')[1])}<div><div class="n" style="font-weight:500">${esc(r.company)}</div><small>${esc(r.campaigns || '')}</small></div></div></td>
       <td><span class="mail">${esc(r.email)}</span>${chk.status ? `<small><span class="pill ${chk.status === 'ok' ? 'ok' : chk.status === 'riskli' ? 'warn' : 'bad'}" title="${esc(chk.reason)}">${chk.status === 'ok' ? 'doğrulandı' : esc(chk.status)}</span></small>` : ''}</td>
-      <td class="hide-m">${r.blocked ? pill('engelli') : r.replied ? pill('yanıtladı') : r.last_status ? pill(r.last_status) : '<span class="mut">yeni</span>'}${r.last_sent ? `<small>${fmtDate(r.last_sent)}</small>` : ''}</td>
+      <td class="hide-m">${r.blocked ? pill('engelli') : r.replied ? pill('yanıtladı') : r.manual_sent ? `<span class="pill ok">✍ elle gönderildi</span><small>${fmtDate(r.manual_sent)} · <a href="#" data-unman="${r.id}">geri al</a></small>` : r.last_status ? pill(r.last_status) : '<span class="mut">yeni</span>'}${r.last_sent ? `<small>${fmtDate(r.last_sent)}</small>` : ''}</td>
       <td><select data-tp="${r.id}" style="height:34px">${tplOpts(choice[r.id])}</select></td></tr>`; }).join('')}</tbody></table></div>`
       : empty('Bu filtrede maili olan kişi yok', 'Kampanyalardan ya da Kişi Ara\'dan mail bulduğunda burada listelenir.');
     upd();
@@ -1169,6 +1169,13 @@ PAGES.maillist = tryT(async () => {
         const { map, wa } = abSplit(s, a, bb); Object.entries(map).forEach(([id, v]) => setTpl(+id, v)); closeModal(); toast(`A/B atandı (A %${Math.round(wa * 100)} / B %${Math.round((1 - wa) * 100)})`); };
     });
   };
+  $('mlMan').onclick = tryT(async () => {
+    const s = ids(); if (!s.length) return toast('Kişi seç', true);
+    if (!confirm(`${s.length} kişi "elle gönderildi" olarak işaretlensin mi?
+Otopilot ve toplu gönderim bu kişilere bir daha yazmaz, kuyruktaki mailleri iptal edilir.`)) return;
+    await post('/api/contacts/manual', { ids: s, on: true }); toast(`${s.length} kişi işaretlendi`); draw();
+  });
+  $('mlt').onclick = tryT(async e => { const u = e.target.closest('[data-unman]'); if (!u) return; e.preventDefault(); await post('/api/contacts/manual', { ids: [+u.dataset.unman], on: false }); toast('İşaret kaldırıldı'); draw(); });
   $('mlPrev').onclick = tryT(async () => {
     const id = ids()[0] || rows[0]?.id, tp = choice[id]; if (!id || !tp) return toast('Şablonu seçilmiş bir kişi seç', true);
     const T = TPLS.find(x => x.id === +tp), who = rows.find(x => x.id === id);

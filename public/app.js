@@ -1513,4 +1513,39 @@ async function autopilotCard(el) {
   $('apR').onclick = e => busyBtn(e.currentTarget, async () => { if (!confirm('Bugünün otopilot mailleri şimdi hazırlanıp kuyruğa alınsın mı?')) return; const r = await post('/api/autopilot/run'); toast(`${r.queued} mail kuyruğa alındı (${r.en || 0} İngilizce)`); autopilotCard(el); }, 'AI yazıyor');
 }
 
+// ================= İçerik Stüdyosu =================
+PAGES.content = tryT(async () => {
+  const d = await api('/api/content'), c = d.cfg;
+  const img = it => `/api/content/${it.id}/image?v=${encodeURIComponent(it.headline + it.sub + (it.status || ''))}${Date.now() % 1e6}`;
+  main.innerHTML = head('İçerik Stüdyosu', `Her sabah ${esc(c.time)}'da AI ${c.posts} post + ${c.stories} story hazırlar (İSG, modüller, KVKK…). Görseller AI üretimidir, gerçek kayıt gibi algılanabilecekler "temsili görsel" etiketlidir. Telefonda <b>Paylaş</b> → Instagram'ı seç.`,
+    `<input id="ctT" placeholder="Konu (boşsa AI seçer)" style="width:220px"><select id="ctK" style="width:auto"><option value="">1 post + 2 story</option><option value="post">1 post</option><option value="story">1 story</option></select><button class="btn pri" id="ctG">✨ Üret</button>`) +
+  (d.items.length ? `<div class="ct-grid">${d.items.map(it => `<div class="card ct" data-ct="${it.id}">
+    <div class="ct-img ${it.kind}">${it.image ? `<img src="${img(it)}" loading="lazy" alt="">` : `<div class="mut" style="padding:20px">${it.status === 'hata' ? '⚠️ ' + esc(it.error || 'hata') : '⏳ hazırlanıyor'}</div>`}</div>
+    <div class="row" style="gap:6px"><span class="pill">${it.kind === 'story' ? 'Story' : 'Post'}</span>${pill(it.status)}<span class="mut" style="font-size:12px">${esc(it.day || '')}</span></div>
+    <label>Başlık<input data-f="headline" value="${esc(it.headline)}"></label><label>Alt satır<input data-f="sub" value="${esc(it.sub)}"></label>
+    <label>Açıklama<textarea data-f="caption" rows="5">${esc(it.caption)}</textarea></label><label>Etiketler<input data-f="hashtags" value="${esc(it.hashtags)}"></label>
+    <div class="row" style="flex-wrap:wrap;gap:6px">${it.image ? `<button class="btn sm pri" data-a="share">📤 Paylaş</button><a class="btn sm" href="${img(it)}" download="hypevision-${it.id}.jpg">İndir</a>` : ''}
+      <button class="btn sm" data-a="copy">Metni kopyala</button><button class="btn sm" data-a="save">Metni kaydet</button><button class="btn sm" data-a="regen">Yeni görsel</button>
+      <button class="btn sm" data-a="done">Paylaşıldı ✓</button><button class="btn sm ghost" data-a="del">Sil</button></div></div>`).join('')}</div>`
+  : empty('Henüz içerik yok', `İlk içerikler yarın ${esc(c.time)}'da otomatik gelir — beklemek istemiyorsan "Üret".`));
+  $('ctG').onclick = e => busyBtn(e.currentTarget, async () => { const k = $('ctK').value; const r = await post('/api/content/generate', { topic: $('ctT').value.trim(), kind: k || undefined }); toast(`${r.ids.length} içerik hazır`); PAGES.content(); }, 'AI üretiyor (1-3 dk)');
+  main.querySelectorAll('[data-ct]').forEach(card => card.onclick = async e => {
+    const b = e.target.closest('[data-a]'); if (!b) return; const id = card.dataset.ct, it = d.items.find(x => x.id == id);
+    const f = k => card.querySelector(`[data-f="${k}"]`).value, text = () => f('caption') + '\n\n' + f('hashtags');
+    try {
+      if (b.dataset.a === 'copy') { await navigator.clipboard.writeText(text()); toast('Açıklama + etiketler kopyalandı'); }
+      if (b.dataset.a === 'share') {
+        try { await navigator.clipboard.writeText(text()); } catch {}
+        const blob = await (await fetch(`/api/content/${id}/image?x=${Date.now()}`)).blob(), file = new File([blob], `hypevision-${id}.jpg`, { type: 'image/jpeg' });
+        if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], text: text() }); toast('Metin panoda — Instagram\'da açıklamaya yapıştır'); }
+        else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); toast('Bu cihaz doğrudan paylaşmıyor: görsel indirildi, metin panoda. Telefondan açarsan Instagram\'ı seçebilirsin.'); }
+      }
+      if (b.dataset.a === 'save') await busyBtn(b, async () => { await put('/api/content/' + id, { headline: f('headline'), sub: f('sub'), caption: f('caption'), hashtags: f('hashtags') }); toast('Kaydedildi, görsel yeniden basıldı'); PAGES.content(); }, 'Basılıyor');
+      if (b.dataset.a === 'regen') await busyBtn(b, async () => { await post(`/api/content/${id}/regen`); toast('Yeni görsel hazır'); PAGES.content(); }, 'Üretiliyor');
+      if (b.dataset.a === 'done') { await put('/api/content/' + id, { status: 'paylaşıldı' }); PAGES.content(); }
+      if (b.dataset.a === 'del') { if (!confirm('Silinsin mi?')) return; await del('/api/content/' + id); card.remove(); }
+    } catch (er) { if (er.name !== 'AbortError') toast(er.message || 'Hata', 1); }
+  });
+});
+
 boot();

@@ -682,6 +682,17 @@ app.get('/api/postmaster/callback', auth, wrap(async (req, res) => {
 }));
 app.post('/api/postmaster/refresh', auth, wrap(async (req, res) => res.json(await health.fetchPostmaster())));
 // ---- Otopilot: her iş günü 09:38'de kutu başı 3-4 kişiye özel toplantı maili ----
+const content = require('./lib/content');
+app.get('/api/content', auth, (req, res) => res.json({ cfg: content.cfg(), items: all('SELECT * FROM content ORDER BY id DESC LIMIT 60') }));
+app.get('/api/content/:id/image', auth, (req, res) => { const f = content.file(+req.params.id); if (!require('fs').existsSync(f)) return res.status(404).end(); res.set('Cache-Control', 'no-cache'); res.sendFile(f); });
+const cwrap = fn => async (req, res) => { try { res.json(await fn(req)); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
+app.post('/api/content/generate', auth, cwrap(async req => { const b = req.body || {}; const ids = await content.generate(b.kind ? { kind: b.kind, topic: b.topic || '' } : { posts: 1, stories: 2, topic: b.topic || '' }); return { ids }; }));
+app.post('/api/content/:id/regen', auth, cwrap(async req => { await content.regenImage(+req.params.id); return { ok: true }; }));
+app.put('/api/content/:id', auth, cwrap(async req => { const b = req.body || {}, id = +req.params.id;
+  for (const k of ['headline', 'sub', 'caption', 'hashtags', 'status']) if (b[k] != null) run(`UPDATE content SET ${k}=? WHERE id=?`, String(b[k]), id);
+  if (b.headline != null || b.sub != null) await content.rerender(id); return { ok: true }; }));
+app.delete('/api/content/:id', auth, (req, res) => { run('DELETE FROM content WHERE id=?', +req.params.id); res.json({ ok: true }); });
+app.put('/api/content-cfg', auth, (req, res) => { setSetting('content_cfg', JSON.stringify({ ...content.cfg(), ...req.body })); res.json(content.cfg()); });
 app.get('/api/autopilot', auth, (req, res) => res.json({ ...autopilot.cfg(), last: jsonSetting('autopilot_last', null), day: setting('autopilot_day'), pool: autopilot.candidates(500).length }));
 app.put('/api/autopilot', auth, admin, (req, res) => {
   const c = { ...autopilot.cfg(), ...req.body };
@@ -845,5 +856,5 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Bulunamadı' }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res, p) => res.setHeader('Cache-Control', /\.(html|js|css|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=604800') }));
 app.listen(PORT, () => {
   console.log(`Lead-AI: http://localhost:${PORT}`);
-  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start(); autopilot.start();
+  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start(); autopilot.start(); content.start();
 });

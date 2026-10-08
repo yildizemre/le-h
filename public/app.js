@@ -723,6 +723,7 @@ PAGES.settings = tryT(async () => {
       <p class="mut" style="font-size:12px;margin:10px 0 0">Haftalık özet her pazartesi 09:00'da, "bugün geri aranacaklar" her iş günü 09:00'da otomatik gelir.</p></div>
   </div><div>
     <div class="card" id="sendersCard"></div>
+    <div class="card" id="shieldCard"></div>
     <div class="card" id="mvCard"></div>
     <div class="card" id="autoCard"></div>
     <div class="card" id="dhCard"></div>
@@ -743,7 +744,7 @@ PAGES.settings = tryT(async () => {
   $('okt').onclick = e => busyBtn(e.currentTarget, async () => {
     try { const r = await post('/api/test/openai'); $('oki').innerHTML = `<span class="pill ok">Çalışıyor</span> ${esc(r.text)}`; } catch (er) { $('oki').innerHTML = `<span class="pill bad">${esc(er.message)}</span>`; }
   }, 'Test');
-  renderSenders($('sendersCard')); renderDomain($('dhCard')); autoCard($('autoCard')); mvCard($('mvCard'));
+  renderSenders($('sendersCard')); renderDomain($('dhCard')); autoCard($('autoCard')); mvCard($('mvCard')); shieldCard($('shieldCard'));
   $('wrep').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/report/weekly'); toast('Haftalık rapor Telegram\'a gönderildi'); }, 'Gönderiliyor');
   $('ttest').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/test/telegram', { token: $('tt').value.trim(), chat: $('tc').value.trim() }); toast('Telegram mesajı gönderildi ✓'); }, 'Gönderiliyor');
   $('tmute').onclick = e => { const c = e.target.closest('[data-ev]'); if (c && adm) c.classList.toggle('on'); };
@@ -1393,5 +1394,103 @@ async function mvCard(el) {
     catch (er) { $('mvI').innerHTML = `<span class="pill bad">${esc(er.message)}</span>`; }
   }, 'Test');
 }
+
+
+// ================= Ban kalkanı: ısınma + sağlık skoru + Postmaster =================
+const hpill = n => `<span class="pill ${n >= 85 ? 'ok' : n >= 70 ? 'warn' : 'bad'}" title="sağlık skoru">♥ ${n}</span>`;
+renderSenders = async function (el) {
+  const [list, st] = await Promise.all([api('/api/senders'), api('/api/sending')]), adm = ME.role === 'admin';
+  const act = list.filter(s => s.active), cap = act.reduce((a, s) => a + s.eff, 0), left = Math.max(0, cap - act.reduce((a, s) => a + s.today, 0));
+  el.innerHTML = `<div class="card-h"><h3>Gönderen Gmail hesapları</h3><span class="pill ${act.length ? 'ok' : 'bad'}">${act.length} aktif</span></div>
+    <div class="mini3" style="margin:0 0 14px"><a><b>${cap}</b>Bugünkü soğuk mail kapasitesi</a><a><b>${left}</b>Bugün kalan</a><a><b>${st.queued}</b>Sırada</a></div>
+    <p class="hint">Her kutu önce <b>14 gün ısınır</b>: kutular birbirine doğal mail atar, okur, yıldızlar, spam'den kurtarır, yanıtlar. Isınmanın ilk 7 günü soğuk mail <b>0</b>, 8–14. gün en fazla <b>5</b>.
+      Sonra limit sağlık skoruna göre kendiliğinden artar (iyi giden +2/gün, en çok 40) ya da azalır; skor 50'nin altına düşen kutu durur.</p>
+    ${list.length ? `<div class="tw" style="margin-bottom:14px"><table class="tbl"><thead><tr><th>Hesap</th><th>Isınma</th><th>Sağlık</th><th>Bugün</th><th>Limit</th><th>İmza</th><th>Aktif</th><th></th></tr></thead><tbody>
+    ${list.map(s => { const w = s.warm || {}, h = s.hj || {}; return `<tr><td><div class="ent">${avatar(s.name || s.email)}<div><div class="n">${esc(s.email)}</div><small>${esc(s.name || '—')}${s.note ? ' · <span style="color:var(--bad)">' + esc(s.note) + '</span>' : ''}</small></div></div></td>
+      <td>${s.warmup_on ? (w.active ? `<span class="pill info">gün ${w.day + 1}/14</span><small>soğuk ≤ ${w.coldCap ?? '—'} · ısınma ${w.today}/${w.target}</small>` : `<span class="pill ok">ısındı</span><small>bakım ${w.today}/${w.target}</small>`) : '<span class="pill">kapalı</span>'}
+        ${w.inbox !== null && w.inbox !== undefined ? `<small>gelen kutusu %${w.inbox} (${w.checked})</small>` : '<small>ölçüm bekleniyor</small>'}</td>
+      <td>${hpill(s.health ?? 100)}<small title="${esc((h.reasons || []).join(', '))}">${h.little ? 'az veri' : esc((h.reasons || []).slice(0, 2).join(', ') || 'temiz')}</small></td>
+      <td><b>${s.today}</b><span class="mut">/${s.eff}</span></td>
+      <td>${adm ? `<input type="number" min="5" max="40" value="${s.daily}" data-sd="${s.id}" style="width:66px;height:32px">` : s.daily}</td>
+      <td><button class="btn sm" data-sig="${s.id}">${s.signature ? '✓' : '＋'} İmza</button></td>
+      <td>${adm ? `<label class="switch"><input type="checkbox" data-sa="${s.id}" ${s.active ? 'checked' : ''}><i></i></label>` : pill(s.active ? 'aktif' : 'pasif')}</td>
+      <td style="text-align:right;white-space:nowrap">${adm ? `<button class="btn sm" data-wr="${s.id}" title="14 günlük ısınmayı baştan başlat">↺ Isınma</button> ` : ''}<button class="btn sm" data-st="${s.id}">Test</button>${adm ? ` <button class="icon" data-sx="${s.id}">✕</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
+    ${act.length < 2 ? '<div class="banner">Isınma için en az 2 aktif kutu gerekir (kutular birbirine yazar).</div>' : ''}
+    ${adm ? `<details ${list.length ? '' : 'open'}><summary class="btn sm" style="list-style:none;display:inline-flex">＋ Hesap ekle</summary>
+      <div class="grid g2" style="margin-top:12px"><label>Gmail / Workspace adresi<input id="nsE" placeholder="ad@alanadi.com" autocomplete="off"></label>
+      <label>Uygulama şifresi (16 hane)<input id="nsP" type="password" placeholder="xxxx xxxx xxxx xxxx" autocomplete="new-password"></label>
+      <label>Gönderen adı<input id="nsN" placeholder="Ad Soyad"></label><label>Hedef günlük limit<input id="nsD" type="number" value="30" min="5" max="40"></label></div>
+      <div class="row" style="margin-top:12px"><button class="btn pri" id="nsGo">Bağlan, test et ve ısınmaya başlat</button></div></details>` : ''}`;
+  el.onclick = tryT(async e => {
+    const g = e.target.closest('[data-sig]'); if (g) return signatureModal(list.find(s => s.id === +g.dataset.sig), () => renderSenders(el));
+    const r = e.target.closest('[data-wr]'); if (r) { if (!confirm('Bu kutunun 14 günlük ısınması baştan başlasın mı? (İlk 7 gün soğuk mail gitmez)')) return; await put(`/api/senders/${r.dataset.wr}/warmup`, { restart: true }); toast('Isınma baştan başladı'); return renderSenders(el); }
+    const t = e.target.closest('[data-st]'); if (t) return busyBtn(t, async () => { const x = await post(`/api/senders/${t.dataset.st}/test`, {}); toast('Test maili gönderildi → ' + x.to); }, '…');
+    const x = e.target.closest('[data-sx]'); if (x && confirm('Hesap kaldırılsın mı?')) { await del('/api/senders/' + x.dataset.sx); renderSenders(el); }
+  });
+  el.onchange = tryT(async e => {
+    const a = e.target.closest('[data-sa]'); if (a) { await put('/api/senders/' + a.dataset.sa, { active: a.checked }); toast(a.checked ? 'Hesap aktif' : 'Hesap pasif'); renderSenders(el); }
+    const d = e.target.closest('[data-sd]'); if (d) { await put('/api/senders/' + d.dataset.sd, { daily: Math.min(40, +d.value) }); toast('Limit kaydedildi'); renderSenders(el); }
+  });
+  if ($('nsGo')) $('nsGo').onclick = ev => busyBtn(ev.currentTarget, async () => {
+    await post('/api/senders', { email: $('nsE').value, pass: $('nsP').value, name: $('nsN').value, daily: Math.min(40, +$('nsD').value) });
+    toast('Hesap eklendi — 14 günlük ısınma başladı'); renderSenders(el); renderDomain($('dhCard'));
+  }, 'Bağlanıyor');
+};
+
+const REP = { HIGH: ['Yüksek', 'ok'], MEDIUM: ['Orta', 'warn'], LOW: ['Düşük', 'bad'], BAD: ['Kötü', 'bad'] };
+async function shieldCard(el) {
+  const s = await api('/api/shield'), adm = ME.role === 'admin';
+  const doms = s.pm.domains || [];
+  el.innerHTML = `<div class="card-h"><h3>🛡️ Ban kalkanı</h3><span class="pill ${s.gate === 1 ? 'ok' : s.gate ? 'warn' : 'bad'}">${s.gate === 1 ? 'gönderim normal' : s.gate ? 'gönderim yarıda' : 'soğuk gönderim durdu'}</span></div>
+    <p class="hint">Otomatik kurallar: geri dönüş / spam / şikâyet artarsa kutu yavaşlar ya da durur; Google Postmaster itibarı "Orta"ya düşerse tüm soğuk gönderim yarıya iner, "Düşük/Kötü"de durur. Kutulara gelen müşteri yanıtları her durumda cevaplanabilir.</p>
+    <div class="toggle-row"><div><b>Isınma mailleri</b><small>${s.pool} kutu havuzda · 08:00–20:00 arası, kutu başı günde 2→12 (bakımda 3)</small></div><label class="switch"><input type="checkbox" id="wuOn" ${s.warmup_paused ? '' : 'checked'} ${adm ? '' : 'disabled'}><i></i></label></div>
+    <p style="margin:14px 0 6px;font-weight:600;font-size:13px">📮 Google Postmaster Tools</p>
+    ${s.pm_connected ? (doms.length ? doms.map(d => `<div class="step"><span class="ck" style="background:transparent">📮</span><span><b>${esc(d.name)}</b> <small class="mut">${esc(d.date || 'henüz veri yok')}</small><br>
+        itibar ${d.reputation ? `<span class="pill ${REP[d.reputation]?.[1] || ''}">${REP[d.reputation]?.[0] || d.reputation}</span>` : '<span class="mut">veri yok (günde ~100+ Gmail alıcısı gerekir)</span>'}
+        ${d.spam !== null && d.spam !== undefined ? ` · şikâyet %${(d.spam * 100).toFixed(2)}` : ''}</span></div>`).join('') : '<p class="mut">Bağlı. Alan adı Postmaster\'da doğrulanmamış ya da henüz veri yok.</p>') + `<button class="btn sm" id="pmR" style="margin-top:8px">↻ Şimdi güncelle</button>`
+    : `<ol class="mut" style="font-size:12.5px;line-height:1.7;padding-left:18px;margin:4px 0 10px">
+        <li><a href="https://postmaster.google.com" target="_blank" rel="noopener">postmaster.google.com</a> → alan adını ekle ve TXT kaydıyla doğrula (soğuk mail attığın her alan adı).</li>
+        <li><a href="https://console.cloud.google.com/apis/library/gmailpostmastertools.googleapis.com" target="_blank" rel="noopener">Google Cloud</a> → "Gmail Postmaster Tools API"yi etkinleştir.</li>
+        <li>APIs &amp; Services → Credentials → OAuth client ID (Web application) → Authorized redirect URI: <code>${esc(s.redirect)}</code></li>
+        <li>Client ID ve Secret'ı aşağıya gir → "Google ile bağlan".</li></ol>
+      ${adm ? `<div class="grid g2"><label>Client ID<input id="pmI" placeholder="${s.pm_client ? 'kayıtlı' : '…apps.googleusercontent.com'}"></label><label>Client Secret<input id="pmS" type="password" placeholder="${s.pm_client ? 'kayıtlı' : 'GOCSPX-…'}"></label></div>
+      <div class="row" style="margin-top:10px"><button class="btn" id="pmSave">Kaydet</button><a class="btn pri" href="/api/postmaster/auth" id="pmGo">Google ile bağlan</a></div>` : ''}`}`;
+  if (adm && $('wuOn')) $('wuOn').onchange = tryT(async e => { await put('/api/shield', { warmup_paused: !e.target.checked }); toast(e.target.checked ? 'Isınma açık' : 'Isınma durduruldu'); });
+  if ($('pmSave')) $('pmSave').onclick = tryT(async () => { await put('/api/shield', { pm_client_id: $('pmI').value, pm_client_secret: $('pmS').value }); toast('Kaydedildi — şimdi "Google ile bağlan"'); });
+  if ($('pmR')) $('pmR').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/postmaster/refresh'); shieldCard(el); }, 'Güncelleniyor');
+}
+
+// ================= LinkedIn notları =================
+PAGES.linkedin = tryT(async () => {
+  await loadCamps();
+  let f = { campaign: '', state: 'todo' }, rows = [];
+  main.innerHTML = head('LinkedIn', 'Maili doğrulanamayan (catch-all / bulunamayan) hedef birim yetkilileri. AI kişiye özel kısa bağlantı notu yazar; sen profili açıp notu yapıştırarak bağlantı isteği gönderirsin. Otomatik LinkedIn gönderimi hesabı kapattırır, bu yüzden elle.') +
+  `<div class="toolbar"><div class="tabs" id="liT"><button data-s="todo" class="on">Gönderilecek</button><button data-s="sent">Gönderildi</button><button data-s="">Tümü</button></div>
+    <select id="liC" style="width:auto">${campOpts('Tüm kampanyalar')}</select><span class="sp"></span><button class="btn pri" id="liGen">✨ Seçilenlere not yaz</button></div><div id="liL"></div>`;
+  const draw = async () => {
+    rows = await api('/api/linkedin?' + new URLSearchParams(f));
+    $('liL').innerHTML = rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th class="c"><input type="checkbox" id="liA"></th><th>Kişi</th><th>Not</th><th></th></tr></thead><tbody>
+    ${rows.map(r => `<tr data-li="${r.id}"><td class="c"><input type="checkbox" data-lc="${r.id}" ${r.li_note ? '' : 'checked'}></td>
+      <td class="w"><div class="ent">${avatar(r.name)}<div><div class="n">${esc(r.name)}</div><small>${esc(r.title)} @ ${esc(r.company)}</small><small>${pill(r.status)}${r.email ? ' <span class="mail">' + esc(r.email) + '</span>' : ''}</small></div></div></td>
+      <td style="min-width:280px"><textarea data-ln="${r.id}" rows="3" maxlength="300" placeholder="✨ ile AI not yazsın ya da kendin yaz" style="min-height:64px;font-size:13px">${esc(r.li_note)}</textarea><small class="mut" data-lcnt="${r.id}">${(r.li_note || '').length}/200</small></td>
+      <td style="white-space:nowrap"><a class="btn sm pri" href="${esc(r.linkedin)}" target="_blank" rel="noopener" data-lo="${r.id}">in Profili aç + notu kopyala</a>
+        ${r.li_sent ? `<small>✓ ${fmtDate(r.li_sent)}</small> <button class="btn sm ghost" data-lu="${r.id}">geri al</button>` : `<button class="btn sm" data-ls="${r.id}">✓ Gönderdim</button>`}</td></tr>`).join('')}</tbody></table></div>`
+      : empty('Liste boş', 'Maili doğrulanamayan, LinkedIn profili olan hedef birim yetkilisi yok.');
+  };
+  $('liT').onclick = e => { const b = e.target.closest('[data-s]'); if (!b) return; f.state = b.dataset.s; $('liT').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); draw(); };
+  $('liC').onchange = e => { f.campaign = e.target.value; draw(); };
+  main.onchange = e => { if (e.target.id === 'liA') main.querySelectorAll('[data-lc]').forEach(x => x.checked = e.target.checked); const n = e.target.closest('[data-ln]'); if (n) put(`/api/contacts/${n.dataset.ln}/li`, { note: n.value }); };
+  main.oninput = e => { const n = e.target.closest('[data-ln]'); if (n) { const c = main.querySelector(`[data-lcnt="${n.dataset.ln}"]`); c.textContent = n.value.length + '/200'; c.style.color = n.value.length > 200 ? 'var(--bad)' : ''; } };
+  main.onclick = tryT(async e => {
+    const o = e.target.closest('[data-lo]'); if (o) { const t = main.querySelector(`[data-ln="${o.dataset.lo}"]`)?.value; if (t) { try { await navigator.clipboard.writeText(t); toast('Not kopyalandı — LinkedIn\'de "Bağlantı kur → Not ekle"ye yapıştır'); } catch {} } return; }
+    const s = e.target.closest('[data-ls]'); if (s) { await put(`/api/contacts/${s.dataset.ls}/li`, { sent: true }); toast('İşaretlendi'); return draw(); }
+    const u = e.target.closest('[data-lu]'); if (u) { await put(`/api/contacts/${u.dataset.lu}/li`, { sent: false }); return draw(); }
+  });
+  $('liGen').onclick = e => busyBtn(e.currentTarget, async () => {
+    const ids = [...main.querySelectorAll('[data-lc]:checked')].map(x => +x.dataset.lc).slice(0, 40); if (!ids.length) return toast('Kişi seç', true);
+    const r = await post('/api/linkedin/notes', { ids }); toast(`${r.length} not yazıldı`); draw();
+  }, 'AI yazıyor');
+  await draw();
+});
 
 boot();

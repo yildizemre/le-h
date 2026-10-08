@@ -14,6 +14,8 @@ const { event, sendTelegram } = require('./lib/notify');
 const verifier = require('./lib/verify');
 const inbox = require('./lib/inbox');
 const insights = require('./lib/insights');
+const warmup = require('./lib/warmup');
+const health = require('./lib/health');
 
 const PORT = process.env.PORT || 5230;
 if (setting('tpl_seed') !== 'v1') {
@@ -646,7 +648,64 @@ app.get('/api/events', auth, (req, res) => {
 const maskPass = p => p ? '••••' + String(p).slice(-3) : '';
 app.get('/api/senders', auth, (req, res) => {
   const st = Object.fromEntries(mailer.senderStats().map(s => [s.id, s]));
-  res.json(all('SELECT id,email,pass,name,daily,active,note,signature,created FROM senders ORDER BY id').map(s => ({ ...s, pass: maskPass(s.pass), today: st[s.id]?.today || 0, eff: st[s.id]?.daily || 0 })));
+  res.json(all('SELECT id,email,pass,name,daily,active,note,signature,created,warmup_on,warmup_start,health,health_json FROM senders ORDER BY id').map(s => {
+    let h = {}; try { h = JSON.parse(s.health_json || '{}'); } catch {}
+    return { ...s, health_json: undefined, pass: maskPass(s.pass), today: st[s.id]?.today || 0, eff: st[s.id]?.daily || 0,
+      warm: { day: warmup.dayOf(s), active: warmup.inWarmup(s), coldCap: warmup.coldCap(s) === Infinity ? null : warmup.coldCap(s), target: warmup.target(s), ...warmup.stats(s.id) }, hj: h };
+  }));
+});
+// ---- Ban kalkanı: ısınma, sağlık, Postmaster ----
+app.put('/api/senders/:id/warmup', auth, admin, (req, res) => {
+  const id = +req.params.id;
+  if (req.body.restart) run('UPDATE senders SET warmup_start=?, warmup_on=1 WHERE id=?', new Date().toISOString(), id);
+  else if (req.body.on !== undefined) run('UPDATE senders SET warmup_on=? WHERE id=?', req.body.on ? 1 : 0, id);
+  res.json({ ok: true });
+});
+app.get('/api/shield', auth, (req, res) => {
+  health.refreshAll();
+  res.json({ pm: jsonSetting('pm_last', {}), pm_connected: !!setting('pm_refresh'), pm_client: !!setting('pm_client_id'), gate: health.postmasterGate(),
+    redirect: health.REDIRECT(), warmup_paused: setting('warmup_paused') === '1', pool: warmup.pool().length });
+});
+app.put('/api/shield', auth, admin, (req, res) => {
+  const b = req.body;
+  if (b.pm_client_id !== undefined) setSetting('pm_client_id', String(b.pm_client_id).trim());
+  if (b.pm_client_secret) setSetting('pm_client_secret', String(b.pm_client_secret).trim());
+  if (b.warmup_paused !== undefined) setSetting('warmup_paused', b.warmup_paused ? '1' : '0');
+  res.json({ ok: true });
+});
+app.get('/api/postmaster/auth', auth, admin, wrap(async (req, res) => { const st = crypto.randomBytes(12).toString('hex'); setSetting('pm_state', st); res.redirect(health.authUrl(st)); }));
+app.get('/api/postmaster/callback', auth, wrap(async (req, res) => {
+  if (!req.query.code || req.query.state !== setting('pm_state')) return res.status(400).send('Geçersiz istek');
+  await health.exchange(req.query.code); try { await health.fetchPostmaster(); } catch {}
+  res.redirect('/#settings');
+}));
+app.post('/api/postmaster/refresh', auth, wrap(async (req, res) => res.json(await health.fetchPostmaster())));
+app.post('/api/warmup/run', auth, admin, wrap(async (req, res) => { await warmup.sendTick(); res.json({ ok: true }); }));
+
+// ---- LinkedIn notları (maili doğrulanamayan yetkililer) ----
+app.get('/api/linkedin', auth, (req, res) => {
+  const { campaign, state = 'todo' } = req.query, a = [];
+  let sql = `SELECT DISTINCT c.id, c.name, c.title, c.company, c.location, c.linkedin, c.email, c.status, c.li_note, c.li_sent, k.name AS campaign
+    FROM contacts c JOIN leads l ON l.contact_id=c.id JOIN campaigns k ON k.id=l.campaign_id
+    WHERE c.linkedin<>'' AND (c.status IN ('mail tahmini','mail yok','aday','bulunamadı','geçersiz mail') OR c.email='')`;
+  if (campaign) { sql += ' AND l.campaign_id=?'; a.push(+campaign); }
+  sql += state === 'sent' ? ' AND c.li_sent IS NOT NULL' : state === 'todo' ? ' AND c.li_sent IS NULL' : '';
+  const cfg = worker.roleCfg();
+  res.json(all(sql + ' ORDER BY c.li_sent IS NOT NULL, c.id DESC LIMIT 500', ...a).filter(c => worker.roleOk(c.title, cfg)));
+});
+app.post('/api/linkedin/notes', auth, wrap(async (req, res) => {
+  const ids = (req.body.ids || []).map(Number).slice(0, 40), out = [];
+  for (let i = 0; i < ids.length; i += 10) {
+    const ppl = all(`SELECT id, name, title, company, location FROM contacts WHERE id IN (${ids.slice(i, i + 10).map(() => '?').join(',')})`, ...ids.slice(i, i + 10));
+    for (const n of await ai.linkedinNotes(ppl)) { run('UPDATE contacts SET li_note=? WHERE id=?', n.note, n.id); out.push(n); }
+  }
+  res.json(out);
+}));
+app.put('/api/contacts/:id/li', auth, (req, res) => {
+  const { sent, note } = req.body;
+  if (note !== undefined) run('UPDATE contacts SET li_note=? WHERE id=?', String(note).slice(0, 300), +req.params.id);
+  if (sent !== undefined) run('UPDATE contacts SET li_sent=? WHERE id=?', sent ? new Date().toISOString() : null, +req.params.id);
+  res.json({ ok: true });
 });
 app.post('/api/senders', auth, admin, wrap(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase(), pass = String(req.body.pass || '').replace(/\s+/g, '');
@@ -654,7 +713,7 @@ app.post('/api/senders', auth, admin, wrap(async (req, res) => {
   const s = { id: 0, email, pass, name: req.body.name || '' };
   await mailer.testSender(s, email, req.user.signature); // önce bağlantıyı doğrula (kendine test maili)
   run('INSERT INTO senders(email,pass,name,daily) VALUES(?,?,?,?) ON CONFLICT(email) DO UPDATE SET pass=excluded.pass, name=excluded.name, active=1, note=\'\'',
-    email, pass, req.body.name || '', Math.max(5, Math.min(200, +req.body.daily || 40)));
+    email, pass, req.body.name || '', Math.max(5, Math.min(40, +req.body.daily || 30)));
   if (!setting('gmail_user')) { setSetting('gmail_user', email); setSetting('gmail_pass', pass); }
   setSetting('sending_paused', '0');
   res.json({ ok: true });
@@ -663,7 +722,7 @@ app.put('/api/senders/:id', auth, admin, (req, res) => {
   const { name, daily, active, pass, signature } = req.body, id = +req.params.id;
   if (signature !== undefined) run('UPDATE senders SET signature=? WHERE id=?', String(signature), id);
   if (name !== undefined) run('UPDATE senders SET name=? WHERE id=?', name, id);
-  if (daily !== undefined) run('UPDATE senders SET daily=? WHERE id=?', Math.max(5, Math.min(200, +daily || 40)), id);
+  if (daily !== undefined) run('UPDATE senders SET daily=? WHERE id=?', Math.max(5, Math.min(40, +daily || 30)), id); // kutu başı en çok 40
   if (active !== undefined) run("UPDATE senders SET active=?, note='' WHERE id=?", active ? 1 : 0, id);
   if (pass) run('UPDATE senders SET pass=? WHERE id=?', String(pass).replace(/\s+/g, ''), id);
   res.json({ ok: true });
@@ -776,5 +835,5 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Bulunamadı' }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res, p) => res.setHeader('Cache-Control', /\.(html|js|css|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=604800') }));
 app.listen(PORT, () => {
   console.log(`Lead-AI: http://localhost:${PORT}`);
-  worker.start(); mailer.start(); inbox.start(); insights.start();
+  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start();
 });

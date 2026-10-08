@@ -693,6 +693,19 @@ app.get('/api/postmaster/callback', auth, wrap(async (req, res) => {
 }));
 app.post('/api/postmaster/refresh', auth, wrap(async (req, res) => res.json(await health.fetchPostmaster())));
 // ---- Otopilot: her iş günü 09:38'de kutu başı 3-4 kişiye özel toplantı maili ----
+const booking = require('./lib/booking');
+// ---- Online randevu (herkese açık uçlar: giriş gerektirmez, IP başına sınırlı) ----
+const bkHits = {};
+const bkLimit = (req, res, next) => { const k = req.ip, t = Date.now(), h = (bkHits[k] || []).filter(x => t - x < 10 * 60e3); h.push(t); bkHits[k] = h; return h.length > 40 ? res.status(429).json({ error: 'Çok fazla istek, biraz sonra deneyin' }) : next(); };
+app.get('/api/public/booking/:tok', bkLimit, (req, res) => { const i = booking.info(req.params.tok); i ? res.json(i) : res.status(404).json({ error: 'Geçersiz bağlantı' }); });
+app.post('/api/public/booking/:tok', bkLimit, wrap(async (req, res) => res.json(await booking.book(req.params.tok, req.body || {}))));
+app.get('/api/meetings', auth, (req, res) => res.json({ cfg: booking.cfg(), cal: booking.calUrl(), general: booking.link(null),
+  items: all("SELECT m.*, k.name AS campaign FROM meetings m LEFT JOIN campaigns k ON k.id=m.campaign_id ORDER BY (m.start<datetime('now')), m.start LIMIT 300") }));
+app.put('/api/meetings/:id', auth, wrap(async (req, res) => { const b = req.body || {}, id = +req.params.id;
+  if (b.status === 'iptal') await booking.cancel(id); else if (b.status) run('UPDATE meetings SET status=? WHERE id=?', String(b.status), id);
+  if (b.note != null) run('UPDATE meetings SET note=? WHERE id=?', String(b.note), id); res.json({ ok: true }); }));
+app.put('/api/booking-cfg', auth, admin, (req, res) => { setSetting('booking_cfg', JSON.stringify({ ...booking.cfg(), ...req.body })); res.json(booking.cfg()); });
+app.get('/api/contacts/:id/booking', auth, (req, res) => res.json({ link: booking.link(+req.params.id) }));
 const content = require('./lib/content');
 app.get('/api/content', auth, (req, res) => res.json({ cfg: content.cfg(), items: all('SELECT * FROM content ORDER BY id DESC LIMIT 60') }));
 app.get('/api/content/:id/image', auth, (req, res) => { const f = content.file(+req.params.id); if (!require('fs').existsSync(f)) return res.status(404).end(); res.set('Cache-Control', 'no-cache'); res.sendFile(f); });
@@ -703,12 +716,27 @@ app.put('/api/content/:id', auth, cwrap(async req => { const b = req.body || {},
   for (const k of ['headline', 'sub', 'caption', 'hashtags', 'status']) if (b[k] != null) run(`UPDATE content SET ${k}=? WHERE id=?`, String(b[k]), id);
   if (b.headline != null || b.sub != null) await content.rerender(id); return { ok: true }; }));
 app.delete('/api/content/:id', auth, (req, res) => { run('DELETE FROM content WHERE id=?', +req.params.id); res.json({ ok: true }); });
+app.post('/api/content/:id/instagram', auth, cwrap(async req => content.igPublish(+req.params.id)));
+app.get('/api/instagram', auth, cwrap(async () => { const on = !!(setting('ig_token') && setting('ig_user_id')); let me = null, error = '';
+  if (on) { try { me = await content.igMe(); } catch (e) { error = e.message; } } return { on, me, error, user_id: setting('ig_user_id') || '' }; }));
+app.put('/api/instagram', auth, admin, cwrap(async req => { const b = req.body || {};
+  if (b.disconnect) { setSetting('ig_token', ''); setSetting('ig_user_id', ''); return { on: false }; }
+  setSetting('ig_token', String(b.token || '').trim()); setSetting('ig_user_id', String(b.user_id || '').trim()); setSetting('ig_refreshed', String(Date.now()));
+  return { on: true, me: await content.igMe() }; }));
+const blog = require('./lib/blog');
+app.get('/api/blog', auth, (req, res) => res.json({ cfg: blog.cfg(), next: blog.nextKeyword(), keywords: setting('blog_keywords') || '', items: all('SELECT id,keyword,title,slug,meta,tags,status,url,created,length(html) AS size FROM blog ORDER BY id DESC') }));
+app.get('/api/blog/:id', auth, (req, res) => { const b = get('SELECT * FROM blog WHERE id=?', +req.params.id); if (!b) return res.status(404).json({ error: 'Yok' }); res.json({ ...b, export_html: blog.exportHtml(b), export_md: blog.exportMd(b) }); });
+app.post('/api/blog', auth, cwrap(async req => ({ id: await blog.write((req.body || {}).keyword) })));
+app.put('/api/blog/:id', auth, (req, res) => { const b = req.body || {}; for (const k of ['title', 'meta', 'html', 'status', 'url', 'tags']) if (b[k] != null) run(`UPDATE blog SET ${k}=? WHERE id=?`, String(b[k]), +req.params.id); res.json({ ok: true }); });
+app.delete('/api/blog/:id', auth, (req, res) => { run('DELETE FROM blog WHERE id=?', +req.params.id); res.json({ ok: true }); });
+app.put('/api/blog-cfg', auth, (req, res) => { const b = req.body || {}; if (b.keywords != null) setSetting('blog_keywords', String(b.keywords)); delete b.keywords; setSetting('blog_cfg', JSON.stringify({ ...blog.cfg(), ...b })); res.json(blog.cfg()); });
 app.put('/api/content-cfg', auth, (req, res) => { setSetting('content_cfg', JSON.stringify({ ...content.cfg(), ...req.body })); res.json(content.cfg()); });
-app.get('/api/autopilot', auth, (req, res) => res.json({ ...autopilot.cfg(), last: jsonSetting('autopilot_last', null), day: setting('autopilot_day'), pool: autopilot.candidates(500).length }));
+app.get('/api/autopilot', auth, (req, res) => res.json({ ...autopilot.cfg(), partner_offer: ai.partnerOffer(), partner_pool: autopilot.candidates(200, true).length, last: jsonSetting('autopilot_last', null), day: setting('autopilot_day'), pool: autopilot.candidates(500).length }));
 app.put('/api/autopilot', auth, admin, (req, res) => {
   const c = { ...autopilot.cfg(), ...req.body };
   c.min = Math.max(1, Math.min(5, +c.min || 3)); c.max = Math.max(c.min, Math.min(5, +c.max || 4)); c.enabled = !!c.enabled; c.personal = c.personal !== false;
-  c.time = /^\d{1,2}:\d{2}$/.test(c.time || '') ? c.time : '09:38';
+  c.time = /^\d{1,2}:\d{2}$/.test(c.time || '') ? c.time : '09:38'; c.partner_daily = Math.max(0, Math.min(10, +c.partner_daily || 0));
+  if (req.body.partner_offer != null) setSetting('partner_offer', String(req.body.partner_offer).trim()); delete c.partner_offer;
   setSetting('autopilot', JSON.stringify(c)); res.json(c);
 });
 app.post('/api/autopilot/run', auth, admin, wrap(async (req, res) => res.json(await autopilot.run1(true))));
@@ -864,8 +892,11 @@ app.put('/api/companies/:id/call', auth, (req, res) => {
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Bulunamadı' }));
 // Kod dosyaları her açılışta doğrulansın (güncelleme sonrası eski sürüm takılı kalmasın); görseller 7 gün önbellekte
+app.get('/ci/:id-:sg.jpg', (req, res) => { const id = +req.params.id; if (!content.pubOk(id, req.params.sg)) return res.status(404).end(); const f = content.file(id); if (!require('fs').existsSync(f)) return res.status(404).end(); res.type('image/jpeg').sendFile(f); });
+app.get('/r/:tok', (req, res) => { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(__dirname, 'public', 'r.html')); });
+app.get('/cal/:k.ics', (req, res) => { if (!booking.calOk(req.params.k)) return res.status(404).end(); res.type('text/calendar; charset=utf-8').send(booking.feed()); });
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res, p) => res.setHeader('Cache-Control', /\.(html|js|css|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=604800') }));
 app.listen(PORT, () => {
   console.log(`Lead-AI: http://localhost:${PORT}`);
-  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start(); autopilot.start(); content.start();
+  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start(); autopilot.start(); content.start(); blog.start();
 });

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Görüşme planla · Hype Vision</title>
+<link rel="icon" href="/img/icon-32.png">
+<style>
+:root{--bg:#f6f8fb;--card:#fff;--txt:#0f172a;--mut:#64748b;--line:#e5e9f0;--pri:#0b2448;--acc:#0891b2;--accbg:#ecfeff}
+*{box-sizing:border-box}html,body{overflow-x:hidden}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:28px 16px 60px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:22px}.top img{height:30px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;overflow:hidden;min-width:0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+h1{font-size:22px;margin:0 0 6px}p.s{color:var(--mut);margin:0 0 20px}
+.days{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;scrollbar-width:thin}
+.day{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:12px;padding:8px 12px;text-align:center;cursor:pointer;min-width:74px;font:inherit;color:inherit}
+.day b{display:block;font-size:18px}.day small{color:var(--mut);font-size:12px}
+.day.on{border-color:var(--acc);background:var(--accbg);box-shadow:0 0 0 1px var(--acc) inset}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.slot{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 0;font:600 15px/1 inherit;cursor:pointer;color:var(--txt)}
+.slot:hover{border-color:var(--acc)}.slot.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+form{display:none;margin-top:22px;border-top:1px solid var(--line);padding-top:20px}form.show{display:block}
+label{display:block;font-size:13px;color:var(--mut);margin-bottom:12px}
+input,textarea{display:block;width:100%;margin-top:5px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;color:var(--txt);background:#fff}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}@media(max-width:560px){.g2{grid-template-columns:1fr}}
+button.go{background:var(--pri);color:#fff;border:0;border-radius:10px;padding:12px 18px;font:600 15px inherit;cursor:pointer;width:100%}
+button.go:disabled{opacity:.6}
+.err{color:#b91c1c;font-size:14px;margin-top:10px}.ok{text-align:center;padding:30px 10px}.ok .i{font-size:44px}
+.foot{color:var(--mut);font-size:12px;text-align:center;margin-top:18px}
+.sum{background:var(--accbg);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><img src="/img/logo-dark.png" alt="Hype Vision" onerror="this.src='/img/logo-light.png'"></div>
+  <div class="card" id="app"><p class="s">Yükleniyor…</p></div>
+  <div class="foot">Saatler Türkiye saatidir (GMT+3) · hypevisionlab.com</div>
+</div>
+<script>
+const tok = location.pathname.split('/').filter(Boolean).pop();
+const app = document.getElementById('app');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const DN = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'], MN = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+const tr = iso => new Date(Date.parse(iso) + 3 * 3600e3);
+const hm = iso => tr(iso).toISOString().slice(11, 16);
+let D, day = 0, pick = null;
+fetch('/api/public/booking/' + tok).then(r => r.ok ? r.json() : Promise.reject()).then(d => { D = d; draw(); })
+  .catch(() => app.innerHTML = '<h1>Bağlantı geçersiz</h1><p class="s">Bu randevu bağlantısı geçerli değil. info@hypevisionlab.com adresine yazabilirsiniz.</p>');
+function draw() {
+  if (!D.days.length) { app.innerHTML = '<h1>Uygun saat kalmadı</h1><p class="s">Önümüzdeki günler dolu görünüyor, lütfen e-postaya yanıt vererek bize yazın.</p>'; return; }
+  const dd = D.days[day];
+  app.innerHTML = `<h1>${esc(D.title)}</h1>
+    <p class="s">${D.name ? esc(D.name.split(' ')[0]) + ' merhaba, ' : ''}${D.dur} dakikalık online görüşme için size uygun saati seçin. Mevcut kameralarınızla neler yapılabileceğini kısaca gösteriyoruz.</p>
+    ${D.existing ? `<div class="sum">Zaten planlanmış görüşmeniz var: <b>${esc(D.existing)}</b>. Yeni bir saat seçerseniz ek görüşme oluşturulur.</div>` : ''}
+    <div class="days">${D.days.map((x, i) => { const t = new Date(x.day + 'T12:00:00Z'); return `<button class="day ${i === day ? 'on' : ''}" data-d="${i}"><small>${DN[t.getUTCDay()]}</small><b>${t.getUTCDate()}</b><small>${MN[t.getUTCMonth()]}</small></button>`; }).join('')}</div>
+    <div class="slots">${dd.slots.map(s => `<button class="slot ${s === pick ? 'on' : ''}" data-s="${s}">${hm(s)}</button>`).join('')}</div>
+    <form id="f" class="${pick ? 'show' : ''}">
+      <div class="sum" id="sel"></div>
+      <div class="g2"><label>Ad soyad<input name="name" required value="${esc(D.name)}" ${D.general ? '' : 'readonly'}></label><label>Firma<input name="company" required value="${esc(D.company)}" ${D.general ? '' : 'readonly'}></label></div>
+      <div class="g2"><label>E-posta<input name="email" type="email" required value="${esc(D.email)}"></label><label>Telefon (isteğe bağlı)<input name="phone" type="tel"></label></div>
+      <label>Konuşmak istediğiniz konu (isteğe bağlı)<textarea name="note" rows="3" placeholder="ör. depo forklift güvenliği, KKD denetimi, hat duruşları…"></textarea></label>
+      <button class="go" id="go">Görüşmeyi onayla</button><div class="err" id="err"></div>
+    </form>`;
+  if (pick) { const t = tr(pick); document.getElementById('sel').innerHTML = `Seçilen: <b>${t.getUTCDate()} ${MN[t.getUTCMonth()]} ${DN[t.getUTCDay()]} · ${hm(pick)}</b> (${D.dur} dk)`; }
+  app.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { day = +b.dataset.d; draw(); });
+  app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { pick = b.dataset.s; draw(); document.getElementById('f').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  const f = document.getElementById('f');
+  f.onsubmit = async e => {
+    e.preventDefault(); const go = document.getElementById('go'); go.disabled = true; go.textContent = 'Onaylanıyor…';
+    const body = Object.fromEntries(new FormData(f)); body.start = pick;
+    try {
+      const r = await fetch('/api/public/booking/' + tok, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Bir sorun oluştu');
+      app.innerHTML = `<div class="ok"><div class="i">✅</div><h1>Görüşme planlandı</h1><p class="s">${esc(j.when)} (Türkiye saati). Takvim daveti <b>${esc(body.email)}</b> adresine gönderildi.${j.meet ? `<br>Bağlantı: <a href="${esc(j.meet)}">${esc(j.meet)}</a>` : ''}</p><p class="s">Görüşmek üzere!</p></div>`;
+    } catch (er) {
+      document.getElementById('err').textContent = er.message; go.disabled = false; go.textContent = 'Görüşmeyi onayla';
+      if (/uygun değil/.test(er.message)) fetch('/api/public/booking/' + tok).then(r => r.json()).then(d => { D = d; pick = null; draw(); });
+    }
+  };
+}
+</script>
+</body>
+</html>

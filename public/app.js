@@ -1555,4 +1555,122 @@ PAGES.content = tryT(async () => {
   });
 });
 
+// ================= Toplantılar (online randevu) =================
+PAGES.meetings = tryT(async () => {
+  const d = await api('/api/meetings'), c = d.cfg, adm = ME.role === 'admin', now = Date.now();
+  const DN = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+  const when = iso => { const t = new Date(iso); return `${t.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} ${DN[t.getDay()]} · ${t.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`; };
+  const up = d.items.filter(m => Date.parse(m.start) >= now - 3600e3 && m.status !== 'iptal'), past = d.items.filter(m => !up.includes(m));
+  const row = m => `<div class="card mt" data-m="${m.id}"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div><b style="font-size:15px">${esc(when(m.start))}</b> <span class="mut">(${Math.round((Date.parse(m.end) - Date.parse(m.start)) / 60e3)} dk)</span><div>${esc(m.name)} · <b>${esc(m.company)}</b></div>
+      <small class="mut">${esc(m.email)}${m.phone ? ' · ' + esc(m.phone) : ''}${m.campaign ? ' · ' + esc(m.campaign) : ''}</small>${m.note ? `<p style="margin:6px 0 0">“${esc(m.note)}”</p>` : ''}</div>
+      <div class="row" style="gap:6px">${pill(m.status)}${m.status === 'planlandı' ? `<button class="btn sm" data-a="yapıldı">Yapıldı ✓</button><button class="btn sm" data-a="gelmedi">Gelmedi</button><button class="btn sm ghost" data-a="iptal">İptal et</button>` : ''}</div></div></div>`;
+  main.innerHTML = head('Toplantılar', 'Mail alan herkesin kendine özel randevu linki var: takip maillerine ve "ilgileniyor" yanıt taslaklarına otomatik eklenir. Kişi saati seçince takipler durur, kişiye + CC\'ye takvim daveti gider, Telegram\'a 📅 haber düşer.') +
+  `<div class="grid g2" style="margin-bottom:16px">
+    <div class="card"><div class="card-h"><h3>📆 Takvimine ekle</h3></div><p class="hint">Bu adresi Google Takvim → Diğer takvimler → <b>URL ile ekle</b>'ye yapıştır; tüm toplantılar takviminde otomatik görünür (Google birkaç saatte bir yeniler). Adres gizlidir, paylaşma.</p>
+      <div class="row"><input readonly value="${esc(d.cal)}" id="mtCal"><button class="btn" id="mtCalC">Kopyala</button></div></div>
+    <div class="card"><div class="card-h"><h3>🔗 Genel randevu linki</h3></div><p class="hint">Instagram bio, web sitesi, LinkedIn ya da imza için: kişi adını ve firmasını kendi yazar.</p>
+      <div class="row"><input readonly value="${esc(d.general)}" id="mtGen"><button class="btn" id="mtGenC">Kopyala</button><a class="btn" href="${esc(d.general)}" target="_blank">Aç ↗</a></div></div></div>
+  ${adm ? `<details class="card" style="margin-bottom:16px"><summary><b>⚙️ Randevu ayarları</b> <span class="mut">— ${esc(c.start)}–${esc(c.end)}, ${c.dur} dk, ${c.horizon} iş günü ileri</span></summary>
+    <div class="grid g3" style="margin-top:12px"><label>Başlangıç<input id="bS" value="${esc(c.start)}"></label><label>Bitiş<input id="bE" value="${esc(c.end)}"></label><label>Süre (dk)<input id="bD" type="number" min="15" max="90" step="15" value="${c.dur}"></label>
+      <label>Kaç iş günü ileri<input id="bH" type="number" min="3" max="20" value="${c.horizon}"></label><label>En erken (saat sonra)<input id="bL" type="number" min="2" max="72" value="${c.lead_hours}"></label><label>Başlık<input id="bT" value="${esc(c.title)}"></label></div>
+    <label>Sabit görüşme bağlantısı (Google Meet / Teams / Zoom kalıcı oda linki — davette ve onay ekranında gösterilir)<input id="bM" value="${esc(c.meet_link)}" placeholder="https://meet.google.com/abc-defg-hij"></label>
+    <div class="toggle-row"><div><b>Takip maillerine ekle</b><small>Takiplerde kapanıştan önce tek satır: "Size uygun bir saati buradan da seçebilirsiniz: …"</small></div><label class="switch"><input type="checkbox" id="bF" ${c.followups ? 'checked' : ''}><i></i></label></div>
+    <div class="toggle-row"><div><b>İlk maile de ekle</b><small>Önerilmez: ilk soğuk mailde link spam riskini biraz artırır. Kapalı kalsın.</small></div><label class="switch"><input type="checkbox" id="b1" ${c.first ? 'checked' : ''}><i></i></label></div>
+    <div class="row" style="margin-top:10px"><button class="btn pri" id="bSave">Kaydet</button></div></details>` : ''}
+  <h3 style="margin:6px 0 10px">Yaklaşan (${up.length})</h3>${up.length ? up.map(row).join('') : empty('Henüz planlanmış toplantı yok', 'Link takip maillerinde ve yanıt taslaklarında otomatik gidiyor; ilk randevu gelince Telegram\'a haber düşer.')}
+  ${past.length ? `<h3 style="margin:22px 0 10px">Geçmiş / iptal</h3>${past.slice(0, 50).map(row).join('')}` : ''}`;
+  const cp = (id, msg) => $(id + 'C').onclick = async () => { try { await navigator.clipboard.writeText($(id).value); toast(msg); } catch { $(id).select(); } };
+  cp('mtCal', 'Takvim adresi kopyalandı'); cp('mtGen', 'Link kopyalandı');
+  if (adm) $('bSave').onclick = tryT(async () => { await put('/api/booking-cfg', { start: $('bS').value.trim(), end: $('bE').value.trim(), dur: +$('bD').value, horizon: +$('bH').value, lead_hours: +$('bL').value, title: $('bT').value.trim(), meet_link: $('bM').value.trim(), followups: $('bF').checked, first: $('b1').checked }); toast('Randevu ayarları kaydedildi'); PAGES.meetings(); });
+  main.querySelectorAll('[data-m]').forEach(card => card.onclick = tryT(async e => {
+    const b = e.target.closest('[data-a]'); if (!b) return;
+    if (b.dataset.a === 'iptal' && !confirm('Toplantı iptal edilsin mi? Kişiye iptal daveti gider.')) return;
+    await put('/api/meetings/' + card.dataset.m, { status: b.dataset.a }); toast('Güncellendi'); PAGES.meetings();
+  }));
+});
+
+// ================= Blog (SEO) =================
+PAGES.blog = tryT(async () => {
+  const d = await api('/api/blog'), c = d.cfg, DN = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+  main.innerHTML = head('Blog · SEO yazıları', `Her ${DN[c.weekday]} ${esc(c.time)}'da AI, aranma niyeti yüksek bir anahtar kelime için ~1300 kelimelik Türkçe makale taslağı yazar (web'de doğrulanmış bilgi, SSS + Google yapısal verisi). Kontrol et → HTML'i kopyala → hypevisionlab.com/blog'a ekle.`,
+    `<input id="bgK" placeholder="Anahtar kelime (boşsa sıradaki: ${esc(d.next || '—')})" style="width:280px"><button class="btn pri" id="bgGo">✍️ Şimdi yaz</button>`) +
+  `<details class="card" style="margin-bottom:16px"><summary><b>Anahtar kelime listesi</b> <span class="mut">— sıradaki: ${esc(d.next || 'liste bitti')}</span></summary>
+    <p class="hint">Her satıra bir kelime. Buraya yazdıkların hazır listenin önüne geçer (ör. müşterilerin Google'da aradığı ifadeler).</p>
+    <textarea id="bgKw" rows="5" placeholder="forklift çarpışma önleme&#10;depo iş güvenliği">${esc(d.keywords)}</textarea>
+    <div class="row" style="margin-top:8px"><label class="inline"><span class="switch"><input type="checkbox" id="bgOn" ${c.enabled ? 'checked' : ''}><i></i></span> Haftalık otomatik</label><span class="sp"></span><button class="btn" id="bgKs">Kaydet</button></div></details>
+  ${d.items.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Başlık</th><th class="hide-m">Anahtar kelime</th><th>Durum</th><th></th></tr></thead><tbody>
+    ${d.items.map(b => `<tr><td class="w"><b>${esc(b.title)}</b><small>/blog/${esc(b.slug)} · ${Math.round(b.size / 7)} kelime · ${fmtDate(b.created)}</small></td><td class="hide-m">${esc(b.keyword)}</td><td>${pill(b.status)}</td>
+      <td><button class="btn sm" data-bo="${b.id}">Aç</button></td></tr>`).join('')}</tbody></table></div>`
+  : empty('Henüz yazı yok', 'İlk yazı haftalık zamanda otomatik gelir; beklemek istemiyorsan "Şimdi yaz".')}`;
+  $('bgGo').onclick = e => busyBtn(e.currentTarget, async () => { const r = await post('/api/blog', { keyword: $('bgK').value.trim() }); toast('Yazı hazır'); await PAGES.blog(); openBlog(r.id); }, 'AI yazıyor (1-2 dk)');
+  $('bgKs').onclick = tryT(async () => { await put('/api/blog-cfg', { keywords: $('bgKw').value, enabled: $('bgOn').checked }); toast('Kaydedildi'); PAGES.blog(); });
+  main.querySelectorAll('[data-bo]').forEach(b => b.onclick = () => openBlog(+b.dataset.bo));
+});
+async function openBlog(id) {
+  const b = await api('/api/blog/' + id);
+  modal(b.title, `<div class="grid g2"><label>Başlık (≤60)<input id="boT" value="${esc(b.title)}"></label><label>Yayın adresi (yayınladıysan)<input id="boU" value="${esc(b.url || '')}" placeholder="https://hypevisionlab.com/blog/${esc(b.slug)}"></label></div>
+    <label>Meta açıklama (140-158 karakter)<textarea id="boM" rows="2">${esc(b.meta)}</textarea></label>
+    <div class="preview blog-pv" style="max-height:46vh;overflow:auto">${b.html}</div>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:12px"><button class="btn pri" id="boH">HTML'i kopyala</button><button class="btn" id="boMd">Markdown kopyala</button>
+      <button class="btn" id="boS">Kaydet</button><button class="btn" id="boP">Yayınlandı ✓</button><span class="sp"></span><button class="btn ghost" id="boD">Sil</button></div>
+    <p class="hint" style="margin-top:8px">HTML kopyası: başlık, makale, SSS ve Google yapısal verisini (Article + FAQPage) içerir. İçerikte uydurma rakam olmaması istendi ama yayınlamadan önce bir göz at.</p>`, m => {
+    const cp = async (t, msg) => { try { await navigator.clipboard.writeText(t); toast(msg); } catch { toast('Kopyalanamadı', true); } };
+    m.querySelector('#boH').onclick = () => cp(b.export_html, 'HTML kopyalandı');
+    m.querySelector('#boMd').onclick = () => cp(b.export_md, 'Markdown kopyalandı');
+    const save = async extra => { await put('/api/blog/' + id, { title: m.querySelector('#boT').value, meta: m.querySelector('#boM').value, url: m.querySelector('#boU').value, ...extra }); };
+    m.querySelector('#boS').onclick = tryT(async () => { await save(); toast('Kaydedildi'); });
+    m.querySelector('#boP').onclick = tryT(async () => { await save({ status: 'yayında' }); toast('Yayında olarak işaretlendi'); closeModal(); PAGES.blog(); });
+    m.querySelector('#boD').onclick = tryT(async () => { if (!confirm('Silinsin mi?')) return; await del('/api/blog/' + id); closeModal(); PAGES.blog(); });
+  });
+}
+
+// ================= İçerik Stüdyosu: Instagram bağlantısı + otomatik paylaşım =================
+const _contentPage = PAGES.content;
+PAGES.content = tryT(async () => {
+  await _contentPage();
+  const [g, d] = await Promise.all([api('/api/instagram'), api('/api/content')]), c = d.cfg, adm = ME.role === 'admin';
+  const box = document.createElement('div'); box.className = 'card'; box.style.marginBottom = '16px';
+  box.innerHTML = g.on && g.me ? `<div class="card-h"><h3>📸 Instagram bağlı · @${esc(g.me.username)}</h3><span class="pill ok">${g.me.followers_count ?? '?'} takipçi</span></div>
+      <div class="toggle-row"><div><b>Otomatik paylaş</b><small>Her gün o günün hazır içerikleri: post ${esc(c.ig_post_time)}, story'ler ${esc((c.ig_story_times || []).join(' / '))}. Kapalıyken sadece "Instagram'a gönder" butonu ile.</small></div><label class="switch"><input type="checkbox" id="igA" ${c.ig_auto ? 'checked' : ''}><i></i></label></div>
+      <div class="grid g3"><label>Post saati<input id="igPT" value="${esc(c.ig_post_time)}"></label><label>Story saatleri<input id="igST" value="${esc((c.ig_story_times || []).join(', '))}"></label><label>Günlük üretim saati<input id="igGT" value="${esc(c.time)}"></label></div>
+      <div class="row" style="margin-top:10px"><button class="btn pri" id="igSave">Kaydet</button>${adm ? '<button class="btn ghost" id="igOff">Bağlantıyı kes</button>' : ''}</div>`
+    : `<div class="card-h"><h3>📸 Instagram'ı bağla (resmi Meta API)</h3>${g.error ? `<span class="pill bad">${esc(g.error.slice(0, 60))}</span>` : '<span class="pill">bağlı değil</span>'}</div>
+      <ol class="hint" style="padding-left:18px;margin:0 0 10px;line-height:1.7">
+        <li>Instagram hesabını <b>Profesyonel</b> yap (Ayarlar → Hesap türü → İşletme/İçerik üreticisi). Şifre bize gerekmez.</li>
+        <li><a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> → <b>Uygulama oluştur</b> → kullanım: <b>"Instagram ile mesajları ve içerikleri yönet"</b> (Instagram API).</li>
+        <li>Uygulamada <b>Instagram → API setup with Instagram login</b> → "Generate access tokens" → kendi Instagram hesabını ekle → çıkan <b>token</b>'ı kopyala (IG ile başlar). İzinler: instagram_business_basic, instagram_business_content_publish.</li>
+        <li>Aynı ekranda hesabın yanındaki <b>Instagram user ID</b> numarasını kopyala.</li>
+        <li>İkisini aşağıya yapıştır → Bağla. Token 60 gün geçerli, sistem haftada bir otomatik yeniler. Uygulama "geliştirme" modunda kalabilir — kendi hesabına paylaşmak için yayına alman gerekmez.</li></ol>
+      ${adm ? `<div class="grid g2"><label>Instagram user ID<input id="igU" value="${esc(g.user_id)}" placeholder="1784…"></label><label>Access token<input id="igTk" type="password" placeholder="IGAA…" autocomplete="off"></label></div>
+      <div class="row" style="margin-top:8px"><button class="btn pri" id="igCon">Bağla ve test et</button></div>` : '<p class="mut">Bağlamak için yönetici girişi gerekli.</p>'}`;
+  const anchor = main.querySelector('.ph'); anchor.after(box);
+  if ($('igCon')) $('igCon').onclick = e => busyBtn(e.currentTarget, async () => { const r = await put('/api/instagram', { user_id: $('igU').value, token: $('igTk').value }); toast(`Bağlandı: @${r.me.username}`); PAGES.content(); }, 'Test ediliyor');
+  if ($('igOff')) $('igOff').onclick = tryT(async () => { if (!confirm('Instagram bağlantısı kesilsin mi?')) return; await put('/api/instagram', { disconnect: true }); PAGES.content(); });
+  if ($('igSave')) $('igSave').onclick = tryT(async () => { await put('/api/content-cfg', { ig_auto: $('igA').checked, ig_post_time: $('igPT').value.trim(), ig_story_times: $('igST').value.split(/[,\s]+/).filter(Boolean), time: $('igGT').value.trim() }); toast('Kaydedildi'); PAGES.content(); });
+  // her kartın butonlarına "Instagram'a gönder"
+  if (g.on && g.me) main.querySelectorAll('[data-ct]').forEach(card => {
+    const it = d.items.find(x => x.id == card.dataset.ct); if (!it?.image) return;
+    const bar = card.querySelector('.row[style*="flex-wrap"]'); if (!bar) return;
+    if (it.ig_url) { bar.insertAdjacentHTML('afterbegin', `<a class="btn sm" href="${esc(it.ig_url)}" target="_blank" rel="noopener">Instagram'da gör ↗</a>`); return; }
+    if (it.ig_id) return;
+    const b = document.createElement('button'); b.className = 'btn sm pri'; b.textContent = '📸 Instagram\'a gönder'; bar.prepend(b);
+    b.onclick = ev => { ev.stopPropagation(); busyBtn(b, async () => { if (!confirm(`Bu ${it.kind === 'story' ? 'story' : 'post'} şimdi Instagram'da paylaşılsın mı?`)) return; const r = await post(`/api/content/${it.id}/instagram`); toast('Instagram\'da paylaşıldı'); if (r.url) open(r.url, '_blank'); PAGES.content(); }, 'Paylaşılıyor'); };
+  });
+});
+
+// ================= Otopilot kartına çözüm ortağı ayarları =================
+const _apCard = autopilotCard;
+autopilotCard = async function (el) {
+  await _apCard(el);
+  const a = await api('/api/autopilot'), adm = ME.role === 'admin', dis = adm ? '' : 'disabled';
+  const row = el.querySelector('.row:last-child');
+  row.insertAdjacentHTML('beforebegin', `<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px"><b>🤝 Çözüm ortağı (partner) mailleri</b>
+    <p class="hint" style="margin:4px 0 8px">Aktif "Çözüm ortağı" kampanyalarındaki OSGB / İSG danışmanlık / CCTV entegratörü yöneticilerine her gün toplam bu kadar ortaklık maili gider (müşteri mailleriyle aynı kutu limitleri içinde). Hazır aday: <b>${a.partner_pool}</b>${a.partner_pool ? '' : ' — Firma Bul → 🤝 Çözüm ortağı ile kampanya başlat'}.</p>
+    <div class="grid g3"><label>Günlük partner maili<input type="number" id="apPD" min="0" max="10" value="${a.partner_daily}" ${dis}></label></div>
+    <label>Ortaklık modeli (AI mailde bunu anlatır)<textarea id="apPO" rows="3" ${dis}>${esc(a.partner_offer)}</textarea></label></div>`);
+  if (!adm) return;
+  $('apS').onclick = tryT(async () => { await put('/api/autopilot', { enabled: $('apE').checked, time: $('apT').value.trim(), min: +$('apMin').value, max: +$('apMax').value, personal: $('apP').checked, partner_daily: +$('apPD').value, partner_offer: $('apPO').value }); toast('Otopilot kaydedildi'); autopilotCard(el); });
+};
+
 boot();

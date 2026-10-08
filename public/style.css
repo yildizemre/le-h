@@ -261,3 +261,6 @@ nav#nav a{padding:6px 10px}.navh{padding:11px 10px 3px}
 .ct-img{border-radius:12px;overflow:hidden;background:var(--bg2,#0b1220);display:flex;align-items:center;justify-content:center;aspect-ratio:4/5}
 .ct-img.story{aspect-ratio:9/16;max-height:520px}
 .ct-img img{width:100%;height:100%;object-fit:cover;display:block}
+.mt{margin-bottom:10px}
+.blog-pv h2{font-size:18px;margin:18px 0 6px}.blog-pv h3{font-size:15px;margin:14px 0 4px}.blog-pv p,.blog-pv li{font-size:14px;line-height:1.6}
+details.card summary{cursor:pointer;list-style:none}details.card summary::-webkit-details-marker{display:none}

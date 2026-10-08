@@ -16,6 +16,7 @@ const inbox = require('./lib/inbox');
 const insights = require('./lib/insights');
 const warmup = require('./lib/warmup');
 const health = require('./lib/health');
+const autopilot = require('./lib/autopilot');
 
 const PORT = process.env.PORT || 5230;
 if (setting('tpl_seed') !== 'v1') {
@@ -680,6 +681,15 @@ app.get('/api/postmaster/callback', auth, wrap(async (req, res) => {
   res.redirect('/#settings');
 }));
 app.post('/api/postmaster/refresh', auth, wrap(async (req, res) => res.json(await health.fetchPostmaster())));
+// ---- Otopilot: her iş günü 09:38'de kutu başı 3-4 kişiye özel toplantı maili ----
+app.get('/api/autopilot', auth, (req, res) => res.json({ ...autopilot.cfg(), last: jsonSetting('autopilot_last', null), day: setting('autopilot_day'), pool: autopilot.candidates(500).length }));
+app.put('/api/autopilot', auth, admin, (req, res) => {
+  const c = { ...autopilot.cfg(), ...req.body };
+  c.min = Math.max(1, Math.min(5, +c.min || 3)); c.max = Math.max(c.min, Math.min(5, +c.max || 4)); c.enabled = !!c.enabled; c.personal = c.personal !== false;
+  c.time = /^\d{1,2}:\d{2}$/.test(c.time || '') ? c.time : '09:38';
+  setSetting('autopilot', JSON.stringify(c)); res.json(c);
+});
+app.post('/api/autopilot/run', auth, admin, wrap(async (req, res) => res.json(await autopilot.run1(true))));
 app.post('/api/warmup/run', auth, admin, wrap(async (req, res) => { await warmup.sendTick(); res.json({ ok: true }); }));
 
 // ---- LinkedIn notları (maili doğrulanamayan yetkililer) ----
@@ -835,5 +845,5 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Bulunamadı' }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res, p) => res.setHeader('Cache-Control', /\.(html|js|css|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=604800') }));
 app.listen(PORT, () => {
   console.log(`Lead-AI: http://localhost:${PORT}`);
-  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start();
+  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start(); autopilot.start();
 });

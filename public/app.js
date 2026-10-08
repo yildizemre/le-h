@@ -722,6 +722,7 @@ PAGES.settings = tryT(async () => {
       <div class="row" style="margin-top:12px">${adm ? '<button class="btn pri" id="tsave">Kaydet</button>' : ''}<button class="btn" id="ttest">Test mesajı gönder</button><button class="btn" id="wrep">📊 Haftalık raporu gönder</button></div>
       <p class="mut" style="font-size:12px;margin:10px 0 0">Haftalık özet her pazartesi 09:00'da, "bugün geri aranacaklar" her iş günü 09:00'da otomatik gelir.</p></div>
   </div><div>
+    <div class="card" id="autopilotCard"></div>
     <div class="card" id="sendersCard"></div>
     <div class="card" id="shieldCard"></div>
     <div class="card" id="mvCard"></div>
@@ -744,7 +745,7 @@ PAGES.settings = tryT(async () => {
   $('okt').onclick = e => busyBtn(e.currentTarget, async () => {
     try { const r = await post('/api/test/openai'); $('oki').innerHTML = `<span class="pill ok">Çalışıyor</span> ${esc(r.text)}`; } catch (er) { $('oki').innerHTML = `<span class="pill bad">${esc(er.message)}</span>`; }
   }, 'Test');
-  renderSenders($('sendersCard')); renderDomain($('dhCard')); autoCard($('autoCard')); mvCard($('mvCard')); shieldCard($('shieldCard'));
+  renderSenders($('sendersCard')); renderDomain($('dhCard')); autoCard($('autoCard')); mvCard($('mvCard')); shieldCard($('shieldCard')); autopilotCard($('autopilotCard'));
   $('wrep').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/report/weekly'); toast('Haftalık rapor Telegram\'a gönderildi'); }, 'Gönderiliyor');
   $('ttest').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/test/telegram', { token: $('tt').value.trim(), chat: $('tc').value.trim() }); toast('Telegram mesajı gönderildi ✓'); }, 'Gönderiliyor');
   $('tmute').onclick = e => { const c = e.target.closest('[data-ev]'); if (c && adm) c.classList.toggle('on'); };
@@ -1492,5 +1493,24 @@ PAGES.linkedin = tryT(async () => {
   }, 'AI yazıyor');
   await draw();
 });
+
+
+// ================= Otopilot kartı =================
+async function autopilotCard(el) {
+  const a = await api('/api/autopilot'), adm = ME.role === 'admin', dis = adm ? '' : 'disabled';
+  const L = a.last ? `Son: ${fmtDate(new Date(a.last.t).toISOString())} — ${a.last.n} mail (${a.last.en} İngilizce)` : 'Henüz çalışmadı';
+  el.innerHTML = `<div class="card-h"><h3>🤖 Otopilot · günlük toplantı mailleri</h3>${a.enabled ? '<span class="pill ok">açık</span>' : '<span class="pill">kapalı</span>'}</div>
+    <p class="hint">Her iş günü belirlenen saatte, her aktif kutu için ${a.min}–${a.max} kişi seçilir: aktif kampanyalardan, hedef birimde, maili doğrulanmış, daha önce hiç yazılmamış (firma başı 1).
+      AI kişiye özel toplantı isteyen maili yazar (Türk olmayana İngilizce), gönderim anında başına firmaya özel ilk cümle eklenir. Mailler gün içine yayılarak gider; tüm ban kalkanı kuralları geçerli.</p>
+    <div class="toggle-row"><div><b>Açık</b><small>${esc(L)}</small></div><label class="switch"><input type="checkbox" id="apE" ${a.enabled ? 'checked' : ''} ${dis}><i></i></label></div>
+    <div class="grid g3" style="margin-top:8px"><label>Saat<input id="apT" value="${esc(a.time)}" placeholder="09:38" ${dis}></label>
+      <label>Kutu başı en az<input type="number" id="apMin" min="1" max="5" value="${a.min}" ${dis}></label><label>Kutu başı en çok<input type="number" id="apMax" min="1" max="5" value="${a.max}" ${dis}></label></div>
+    <div class="toggle-row"><div><b>Kişiye özel ilk cümle</b><small>Firmanın sitesine/haberlerine bakıp tek cümle (mail başı ~$0.03)</small></div><label class="switch"><input type="checkbox" id="apP" ${a.personal ? 'checked' : ''} ${dis}><i></i></label></div>
+    <p class="mut" style="font-size:12.5px;margin:8px 0 0">Gönderilmeye hazır doğrulanmış aday: <b>${a.pool}</b>${a.pool < 30 ? ' — azalıyor; yeni kampanya / firma bul' : ''}</p>
+    <div class="row" style="margin-top:12px">${adm ? '<button class="btn pri" id="apS">Kaydet</button><button class="btn" id="apR">Şimdi çalıştır</button>' : ''}</div>`;
+  if (!adm) return;
+  $('apS').onclick = tryT(async () => { await put('/api/autopilot', { enabled: $('apE').checked, time: $('apT').value.trim(), min: +$('apMin').value, max: +$('apMax').value, personal: $('apP').checked }); toast('Otopilot kaydedildi'); autopilotCard(el); });
+  $('apR').onclick = e => busyBtn(e.currentTarget, async () => { if (!confirm('Bugünün otopilot mailleri şimdi hazırlanıp kuyruğa alınsın mı?')) return; const r = await post('/api/autopilot/run'); toast(`${r.queued} mail kuyruğa alındı (${r.en || 0} İngilizce)`); autopilotCard(el); }, 'AI yazıyor');
+}
 
 boot();

@@ -723,6 +723,7 @@ PAGES.settings = tryT(async () => {
       <p class="mut" style="font-size:12px;margin:10px 0 0">Haftalık özet her pazartesi 09:00'da, "bugün geri aranacaklar" her iş günü 09:00'da otomatik gelir.</p></div>
   </div><div>
     <div class="card" id="sendersCard"></div>
+    <div class="card" id="mvCard"></div>
     <div class="card" id="autoCard"></div>
     <div class="card" id="dhCard"></div>
     <div class="card"><h3>İmzam</h3><p class="hint">Gönderdiğin her mailin altına eklenir. HTML kullanabilirsin (logo için &lt;img src="https://…" height="40"&gt;).</p>
@@ -742,7 +743,7 @@ PAGES.settings = tryT(async () => {
   $('okt').onclick = e => busyBtn(e.currentTarget, async () => {
     try { const r = await post('/api/test/openai'); $('oki').innerHTML = `<span class="pill ok">Çalışıyor</span> ${esc(r.text)}`; } catch (er) { $('oki').innerHTML = `<span class="pill bad">${esc(er.message)}</span>`; }
   }, 'Test');
-  renderSenders($('sendersCard')); renderDomain($('dhCard')); autoCard($('autoCard'));
+  renderSenders($('sendersCard')); renderDomain($('dhCard')); autoCard($('autoCard')); mvCard($('mvCard'));
   $('wrep').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/report/weekly'); toast('Haftalık rapor Telegram\'a gönderildi'); }, 'Gönderiliyor');
   $('ttest').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/test/telegram', { token: $('tt').value.trim(), chat: $('tc').value.trim() }); toast('Telegram mesajı gönderildi ✓'); }, 'Gönderiliyor');
   $('tmute').onclick = e => { const c = e.target.closest('[data-ev]'); if (c && adm) c.classList.toggle('on'); };
@@ -1373,6 +1374,24 @@ async function roleCard(el) {
     const x = await post('/api/cleanup/targets', {});
     toast(`${x.removedLeads} uygunsuz yetkili çıkarıldı · ${x.requeued} firmada doğru kişi aranıyor · ${x.removedCos} üretici olmayan firma kaldırıldı`);
   }, 'Temizleniyor');
+}
+
+
+// ================= Mail bulma kaynağı: kalıp + doğrulama (MillionVerifier) =================
+async function mvCard(el) {
+  const s = await api('/api/settings'), adm = ME.role === 'admin', dis = adm ? '' : 'disabled';
+  const M = [['guess_rr', 'Önce kalıp + doğrulama, olmazsa RocketReach (önerilen)'], ['guess', 'Sadece kalıp + doğrulama (RocketReach mail kotası hiç harcanmaz)'], ['rr', 'Sadece RocketReach']];
+  el.innerHTML = `<div class="card-h"><h3>✉️ Mail bulma kaynağı</h3>${s.mv_key ? '<span class="pill ok">doğrulama bağlı</span>' : '<span class="pill warn">doğrulama yok</span>'}</div>
+    <p class="hint">Kişinin adı ve unvanı RocketReach aramasından gelir (ayda 10.000, bol). Mail için RocketReach sorgusu (ayda 5.000, kıt) yerine firmanın mail kalıbı (ör. ad.soyad@)
+      tahmin edilir ve <a href="https://www.millionverifier.com" target="_blank" rel="noopener">MillionVerifier</a> ile doğrulanır (adres başı ~$0.004). Sadece "geçerli" çıkan adres kullanılır; her adresi kabul eden sunucularda (catch-all) mail gönderilmez.</p>
+    <div class="grid g2"><label>MillionVerifier API key<input id="mvK" placeholder="${s.mv_key ? esc(s.mv_key) + ' (kayıtlı)' : 'app.millionverifier.com → API'}" ${dis} autocomplete="off"></label>
+      <label>Mail kaynağı<select id="mvM" ${dis}>${M.map(([k, l]) => `<option value="${k}" ${s.mail_source === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+    <div class="row" style="margin-top:12px">${adm ? '<button class="btn pri" id="mvS">Kaydet</button>' : ''}<button class="btn" id="mvT">Bağlantıyı test et</button></div><p id="mvI" class="mut" style="margin:10px 0 0"></p>`;
+  if (adm) $('mvS').onclick = tryT(async () => { await put('/api/settings', { mv_key: $('mvK').value.trim(), mail_source: $('mvM').value }); toast('Kaydedildi'); mvCard(el); });
+  $('mvT').onclick = e => busyBtn(e.currentTarget, async () => {
+    try { const r = await post('/api/test/mv'); $('mvI').innerHTML = `<span class="pill ok">Bağlı</span> ${esc(r.credits ?? '?')} kredi · en sık kalıplar: ${esc((r.patterns || []).join(', '))}`; }
+    catch (er) { $('mvI').innerHTML = `<span class="pill bad">${esc(er.message)}</span>`; }
+  }, 'Test');
 }
 
 boot();

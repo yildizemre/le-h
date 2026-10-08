@@ -85,16 +85,16 @@ app.delete('/api/users/:id', auth, admin, (req, res) => {
 // ---------------- Settings / integrations ----------------
 const mask = k => k ? k.slice(0, 5) + '•••' + k.slice(-4) : '';
 app.get('/api/settings', auth, (req, res) => res.json({
-  rr_key: mask(setting('rr_api_key')), openai_key: mask(setting('openai_key')), openai_model: setting('openai_model') || 'gpt-4.1-mini',
+  rr_key: mask(setting('rr_api_key')), mv_key: mask(setting('mv_key')), mail_source: setting('mail_source') || 'guess_rr', openai_key: mask(setting('openai_key')), openai_model: setting('openai_model') || 'gpt-4.1-mini',
   gmail_user: setting('gmail_user'), gmail_pass: setting('gmail_pass') ? '••••••••' : '', from_name: setting('from_name'),
   tg_token: mask(setting('tg_token')), tg_chat: setting('tg_chat'), tg_mute: setting('tg_mute'), always_cc: setting('always_cc'),
   schedule: mailer.schedule(), sending_paused: setting('sending_paused') === '1',
 }));
 app.put('/api/settings', auth, admin, (req, res) => {
   const b = req.body;
-  for (const [k, key] of [['rr_key', 'rr_api_key'], ['openai_key', 'openai_key'], ['tg_token', 'tg_token'], ['gmail_pass', 'gmail_pass']])
+  for (const [k, key] of [['rr_key', 'rr_api_key'], ['openai_key', 'openai_key'], ['tg_token', 'tg_token'], ['gmail_pass', 'gmail_pass'], ['mv_key', 'mv_key']])
     if (b[k]) setSetting(key, k === 'gmail_pass' ? b[k].replace(/\s+/g, '') : b[k].trim());
-  for (const k of ['openai_model', 'gmail_user', 'from_name', 'tg_chat', 'tg_mute', 'always_cc']) if (b[k] !== undefined) setSetting(k, String(b[k]).trim());
+  for (const k of ['openai_model', 'gmail_user', 'from_name', 'tg_chat', 'tg_mute', 'always_cc', 'mail_source']) if (b[k] !== undefined) setSetting(k, String(b[k]).trim());
   if (b.gmail_user !== undefined || b.gmail_pass) { setSetting('sending_paused', '0'); syncLegacySender(); }
   if (b.sending_paused !== undefined) setSetting('sending_paused', b.sending_paused ? '1' : '0');
   if (b.schedule) {
@@ -122,6 +122,7 @@ app.post('/api/test/telegram/chats', auth, wrap(async (req, res) => { // bot'a y
   for (const u of j.result || []) { const c = (u.message || u.channel_post || u.my_chat_member || {}).chat; if (c) chats[c.id] = c.title || [c.first_name, c.last_name].join(' ') || c.username; }
   res.json(Object.entries(chats).map(([id, name]) => ({ id, name })));
 }));
+app.post('/api/test/mv', auth, wrap(async (req, res) => { const g = require('./lib/emailguess'); res.json({ ...(await g.mvCredits()), patterns: g.globalPatterns().slice(0, 4) }); }));
 app.post('/api/test/openai', auth, wrap(async (req, res) => res.json({ ok: true, text: await ai.ask('Sadece "tamam" yaz.', { json: false }) })));
 
 // ---------------- Project profile ----------------

@@ -1647,6 +1647,19 @@ PAGES.content = tryT(async () => {
       ${adm ? `<div class="grid g2"><label>Instagram user ID<input id="igU" value="${esc(g.user_id)}" placeholder="1784…"></label><label>Access token<input id="igTk" type="password" placeholder="IGAA…" autocomplete="off"></label></div>
       <div class="row" style="margin-top:8px"><button class="btn pri" id="igCon">Bağla ve test et</button></div>` : '<p class="mut">Bağlamak için yönetici girişi gerekli.</p>'}`;
   const anchor = main.querySelector('.ph'); anchor.after(box);
+  // Açık/kapalı + maliyet ayarı (en üstte)
+  const cost = { low: 0.016, medium: 0.063, high: 0.25 }[c.quality] || 0.063, per = (c.posts + c.stories) * cost;
+  const onoff = document.createElement('div'); onoff.className = 'card'; onoff.style.marginBottom = '16px';
+  onoff.innerHTML = `<div class="toggle-row" style="border:0;padding:0"><div><b>İçerik Stüdyosu ${c.enabled ? '<span class="pill ok">açık</span>' : '<span class="pill">kapalı</span>'}</b>
+      <small>Açıkken her sabah ${esc(c.time)}'da otomatik üretir. Tahmini maliyet: günde ~$${per.toFixed(2)} (ayda ~$${(per * 30).toFixed(0)}). Kapalıyken hiçbir şey üretilmez ve para harcanmaz; istersen elle "Üret" diyebilirsin.</small></div>
+      <label class="switch"><input type="checkbox" id="csOn" ${c.enabled ? 'checked' : ''}><i></i></label></div>
+    <div class="grid g3" style="margin-top:10px"><label>Günlük post<input id="csP" type="number" min="0" max="3" value="${c.posts}"></label><label>Günlük story<input id="csS" type="number" min="0" max="5" value="${c.stories}"></label>
+      <label>Görsel kalitesi<select id="csQ"><option value="low" ${c.quality === 'low' ? 'selected' : ''}>Düşük (~$0.02/görsel)</option><option value="medium" ${c.quality === 'medium' ? 'selected' : ''}>Orta (~$0.06/görsel)</option><option value="high" ${c.quality === 'high' ? 'selected' : ''}>Yüksek (~$0.25/görsel)</option></select></label></div>
+    <div class="row" style="margin-top:8px"><button class="btn pri" id="csSave">Kaydet</button></div>`;
+  main.querySelector('.ph').after(onoff);
+  $('csOn').onchange = tryT(async e => { await put('/api/content-cfg', { enabled: e.target.checked }); toast(e.target.checked ? 'İçerik Stüdyosu açıldı' : 'İçerik Stüdyosu kapatıldı — otomatik üretim durdu'); PAGES.content(); });
+  $('csSave').onclick = tryT(async () => { await put('/api/content-cfg', { posts: +$('csP').value, stories: +$('csS').value, quality: $('csQ').value }); toast('Kaydedildi'); PAGES.content(); });
+
   if ($('igCon')) $('igCon').onclick = e => busyBtn(e.currentTarget, async () => { const r = await put('/api/instagram', { user_id: $('igU').value, token: $('igTk').value }); toast(`Bağlandı: @${r.me.username}`); PAGES.content(); }, 'Test ediliyor');
   if ($('igOff')) $('igOff').onclick = tryT(async () => { if (!confirm('Instagram bağlantısı kesilsin mi?')) return; await put('/api/instagram', { disconnect: true }); PAGES.content(); });
   if ($('igSave')) $('igSave').onclick = tryT(async () => { await put('/api/content-cfg', { ig_auto: $('igA').checked, ig_post_time: $('igPT').value.trim(), ig_story_times: $('igST').value.split(/[,\s]+/).filter(Boolean), time: $('igGT').value.trim() }); toast('Kaydedildi'); PAGES.content(); });

@@ -782,6 +782,7 @@ app.post('/api/blog', auth, cwrap(async req => ({ id: await blog.write((req.body
 app.put('/api/blog/:id', auth, (req, res) => { const b = req.body || {}; for (const k of ['title', 'meta', 'html', 'status', 'url', 'tags']) if (b[k] != null) run(`UPDATE blog SET ${k}=? WHERE id=?`, String(b[k]), +req.params.id); res.json({ ok: true }); });
 app.delete('/api/blog/:id', auth, (req, res) => { const b = get('SELECT status FROM blog WHERE id=?', +req.params.id); if (b && b.status === 'yayında') return res.status(409).json({ error: 'Yazı sitede yayında — önce "Yayından kaldır"' }); run('DELETE FROM blog WHERE id=?', +req.params.id); res.json({ ok: true }); });
 app.get('/api/blog/:id/audit', auth, cwrap(async req => { const b = get('SELECT * FROM blog WHERE id=?', +req.params.id); if (!b) throw Object.assign(new Error('Yok'), { status: 404 }); return { ...(await blog.pub.audit(b)), configured: blog.pub.configured(), repo: blog.pub.REPO }; }));
+app.post('/api/blog/:id/fix', auth, cwrap(async req => blog.fix(+req.params.id)));
 app.post('/api/blog/:id/publish', auth, cwrap(async req => blog.pub.publish(+req.params.id)));
 app.post('/api/blog/:id/unpublish', auth, cwrap(async req => blog.pub.unpublish(+req.params.id)));
 app.put('/api/blog-cfg', auth, (req, res) => { const b = req.body || {}; if (b.keywords != null) setSetting('blog_keywords', String(b.keywords)); delete b.keywords; setSetting('blog_cfg', JSON.stringify({ ...blog.cfg(), ...b })); res.json(blog.cfg()); });

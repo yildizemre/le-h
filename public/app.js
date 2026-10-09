@@ -1626,6 +1626,7 @@ async function openBlog(id) {
           ${a.warnings.length ? `<ul style="margin:8px 0;color:#b9770e">${a.warnings.map(x => `<li>⚠️ ${esc(x)}</li>`).join('')}</ul>` : ''}
           ${a.configured ? '' : '<p class="hint" style="color:#c0392b">Sunucuda BLOG_GH_TOKEN tanımlı değil — yayın yapılamaz.</p>'}
           <div class="row" style="gap:6px;margin-top:8px">
+            ${a.problems.length || a.warnings.length ? '<button class="btn" id="boFix">✨ Sorunları düzelt</button>' : ''}
             <button class="btn pri" id="boPub" ${a.ok && a.configured ? '' : 'disabled'}>${live ? '🔄 Sitede güncelle' : '🚀 Siteye yayınla'}</button>
             ${live ? '<button class="btn ghost" id="boUn">Yayından kaldır</button>' : ''}
             ${b.url ? `<a class="btn ghost" href="${esc(b.url)}" target="_blank" rel="noopener">Sayfayı aç ↗</a>` : ''}</div>
@@ -1637,6 +1638,11 @@ async function openBlog(id) {
           const r = await post('/api/blog/' + id + '/publish', {});
           toast('Yayına gönderildi: ' + r.url); closeModal(); PAGES.blog();
         }, 'Yayınlanıyor');
+        const fb = box.querySelector('#boFix');
+        if (fb) fb.onclick = e => busyBtn(e.currentTarget, async () => {
+          await save(); const r = await post('/api/blog/' + id + '/fix', {});
+          toast(r.ok ? 'Düzeltildi — yayına hazır' : 'Düzeltildi, kalan: ' + r.problems.join(', ')); closeModal(); openBlog(id);
+        }, 'AI düzeltiyor');
         const ub = box.querySelector('#boUn');
         if (ub) ub.onclick = e => busyBtn(e.currentTarget, async () => {
           if (!confirm('Yazı siteden kaldırılsın mı? (taslak olarak panelde kalır)')) return;

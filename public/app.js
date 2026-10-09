@@ -1673,4 +1673,50 @@ autopilotCard = async function (el) {
   $('apS').onclick = tryT(async () => { await put('/api/autopilot', { enabled: $('apE').checked, time: $('apT').value.trim(), min: +$('apMin').value, max: +$('apMax').value, personal: $('apP').checked, partner_daily: +$('apPD').value, partner_offer: $('apPO').value }); toast('Otopilot kaydedildi'); autopilotCard(el); });
 };
 
+// ================= Bulunan Kişiler (tüm kampanyalar tek listede) =================
+PAGES.found = tryT(async () => {
+  await loadCamps();
+  let f = { state: 'todo', campaign: '', q: '', target: '1' }, rows = [];
+  main.innerHTML = head('Bulunan Kişiler', 'Tüm kampanyalarda bulunan kişiler tek yerde. Kampanyalara tek tek girmeden: "Mail aranacak" sekmesinde hepsini seç → Mail bul. Bulunanlar Mail Listesi\'ne düşer, otopilot da oradan alır.',
+    '<a class="btn" href="#maillist">Mail Listesi →</a>') +
+  `<div class="toolbar"><input id="fdq" placeholder="İsim, firma, unvan…" style="max-width:240px"><select id="fdc" style="width:auto">${campOpts('Tüm kampanyalar')}</select>
+    <div class="tabs" id="fds"></div><span class="sp"></span>
+    <label class="inline" title="Kapalıysa muhasebe, İK, satış gibi hedef dışı birimler de görünür"><span class="switch"><input type="checkbox" id="fdT" checked><i></i></span> Sadece hedef birimler</label></div>
+  <div id="fdt"></div>
+  <div class="selbar"><b id="fdN">Kişi seç</b><span class="sp"></span><button class="btn" id="fdAll">Tümünü seç</button><button class="btn pri" id="fdGo">🔎 Mail bul</button><button class="btn hide" id="fdRe" title="Daha önce bulunamayanları tekrar dene (kota harcar)">↻ Tekrar dene</button></div>`;
+  const ids = () => [...main.querySelectorAll('[data-fd]:checked')].map(x => +x.dataset.fd);
+  const upd = () => { const n = ids().length; $('fdN').textContent = n ? `${n} kişi seçili` : 'Kişi seç'; };
+  const TABS = [['todo', 'Mail aranacak'], ['queued', 'Aranıyor'], ['found', 'Mail bulundu'], ['none', 'Bulunamadı'], ['all', 'Tümü']];
+  const draw = async () => {
+    const d = await api('/api/found?' + new URLSearchParams(f)); rows = d.rows;
+    $('fds').innerHTML = TABS.map(([k, t]) => `<button data-s="${k}" class="${f.state === k ? 'on' : ''}">${t} <span class="mut">${d.counts[k]}</span></button>`).join('');
+    $('fdGo').classList.toggle('hide', !['todo', 'all'].includes(f.state)); $('fdRe').classList.toggle('hide', f.state !== 'none');
+    $('fdt').innerHTML = rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th class="c"><input type="checkbox" id="fdA"></th><th>Kişi</th><th>Firma</th><th class="hide-m">Kampanya</th><th>Durum</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td class="c"><input type="checkbox" data-fd="${r.id}" ${r.email || r.queued ? 'disabled' : ''}></td>
+        <td class="w"><div class="ent">${avatar(r.name)}<div><div class="n">${esc(r.name)} ${li(r.linkedin)}</div><small>${esc(r.title)}${r.target ? '' : ' · <span class="pill warn" style="font-size:10.5px">hedef dışı</span>'}</small></div></div></td>
+        <td><div class="ent">${favicon(r.domain)}<div><div class="n" style="font-weight:500">${esc(r.company)}</div><small>${esc(r.location || '')}</small></div></div></td>
+        <td class="hide-m"><a href="#c/${r.campaign_id}/people">${esc(r.campaign)}</a></td>
+        <td>${r.email ? `<span class="mail">${esc(r.email)}</span>` : r.queued ? '<span class="pill pri"><span class="spin"></span> aranıyor</span>' : r.looked ? pill(r.status) : '<span class="mut">aranmadı</span>'}</td></tr>`).join('')}</tbody></table></div>`
+      : empty({ todo: 'Mail aranacak kişi kalmadı 🎉', queued: 'Şu an aranan kişi yok', found: 'Henüz mail bulunmadı', none: 'Bulunamayan yok', all: 'Kişi yok' }[f.state], f.state === 'todo' ? '"Mail bulundu" sekmesine ya da Mail Listesi\'ne bak.' : '');
+    upd();
+  };
+  let t; $('fdq').oninput = e => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value; draw(); }, 300); };
+  $('fds').onclick = e => { const b = e.target.closest('[data-s]'); if (!b) return; f.state = b.dataset.s; draw(); };
+  main.onchange = e => {
+    if (e.target.id === 'fdc') { f.campaign = e.target.value; return draw(); }
+    if (e.target.id === 'fdT') { f.target = e.target.checked ? '1' : '0'; return draw(); }
+    if (e.target.id === 'fdA') main.querySelectorAll('[data-fd]:not(:disabled)').forEach(x => x.checked = e.target.checked);
+    upd();
+  };
+  $('fdAll').onclick = () => { const all = main.querySelectorAll('[data-fd]:not(:disabled)'), on = [...all].some(x => !x.checked); all.forEach(x => x.checked = on); upd(); };
+  const go = force => async e => busyBtn(e.currentTarget, async () => {
+    const s = ids(); if (!s.length) return toast('Kişi seç (ya da "Tümünü seç")', true);
+    if (s.length > 30 && !confirm(`${s.length} kişinin maili aranacak. Önce tahmin + doğrulama denenir, RocketReach kotası gerekirse kullanılır. Devam?`)) return;
+    const items = s.map(id => { const r = rows.find(x => x.id === id); return { contact_id: id, campaign_id: r?.campaign_id }; });
+    const r = await post('/api/found/lookup', { items, force }); toast(lookupMsg(r)); draw();
+  }, 'Kuyruğa alınıyor');
+  $('fdGo').onclick = go(false); $('fdRe').onclick = go(true);
+  await draw();
+});
+
 boot();

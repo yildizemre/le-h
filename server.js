@@ -302,6 +302,38 @@ app.post('/api/campaigns/:id/leads/stage', auth, (req, res) => {
 });
 
 // ---------------- Lookup queue ----------------
+// Tüm kampanyalardan bulunan kişiler tek listede (mail arama tek yerden)
+app.get('/api/found', auth, (req, res) => {
+  const { campaign, q, state = 'todo', target = '1' } = req.query, a = [];
+  let sql = `SELECT c.id, c.name, c.title, c.company, c.domain, c.location, c.email, c.status, c.linkedin, l.campaign_id, k.name AS campaign, l.stage,
+      EXISTS(SELECT 1 FROM tasks t WHERE t.type='lookup' AND t.status IN ('sırada','çalışıyor','rr bekliyor') AND json_extract(t.payload,'$.contact_id')=c.id) AS queued
+    FROM leads l JOIN contacts c ON c.id=l.contact_id JOIN campaigns k ON k.id=l.campaign_id WHERE k.status<>'arşiv'`;
+  if (campaign) { sql += ' AND l.campaign_id=?'; a.push(+campaign); }
+  if (q) { sql += ' AND (c.name LIKE ? OR c.company LIKE ? OR c.title LIKE ?)'; a.push(...Array(3).fill('%' + q + '%')); }
+  let rows = all(sql + ' GROUP BY c.id ORDER BY l.id DESC LIMIT 5000', ...a);
+  const cfg = worker.roleCfg();
+  rows.forEach(r => { r.target = !!worker.roleOk(r.title, cfg); r.looked = worker.LOOKED.includes(r.status); });
+  const counts = { todo: 0, queued: 0, found: 0, none: 0, all: rows.length };
+  for (const r of rows) r.email ? counts.found++ : r.queued ? counts.queued++ : r.looked ? counts.none++ : counts.todo++;
+  if (target === '1') rows = rows.filter(r => r.target || r.email);
+  if (state === 'todo') rows = rows.filter(r => !r.email && !r.queued && !r.looked);
+  if (state === 'queued') rows = rows.filter(r => !r.email && r.queued);
+  if (state === 'found') rows = rows.filter(r => r.email);
+  if (state === 'none') rows = rows.filter(r => !r.email && r.looked && !r.queued);
+  res.json({ counts, rows: rows.slice(0, 1500) });
+});
+app.post('/api/found/lookup', auth, (req, res) => {
+  let n = 0; const skip = { 'maili zaten var': 0, 'daha önce sorgulandı': 0, 'zaten kuyrukta': 0 };
+  for (const it of req.body.items || []) {
+    const c = get('SELECT id,email,status FROM contacts WHERE id=?', +it.contact_id); if (!c) continue;
+    if (c.email) { skip['maili zaten var']++; continue; }
+    if (worker.LOOKED.includes(c.status) && !req.body.force) { skip['daha önce sorgulandı']++; continue; }
+    if (!worker.enqueue('lookup', { contact_id: c.id, ...(req.body.force ? { force: 1 } : {}) }, it.campaign_id || null, req.user.id)) { skip['zaten kuyrukta']++; continue; }
+    n++;
+    if (it.campaign_id) run("UPDATE leads SET stage='mail kuyrukta' WHERE campaign_id=? AND contact_id=? AND stage IN ('aday','mail yok')", +it.campaign_id, c.id);
+  }
+  worker.loop(); res.json({ queued: n, skipped: skip });
+});
 app.post('/api/queue/lookup', auth, (req, res) => {
   let n = 0; const skip = { 'maili zaten var': 0, 'daha önce sorgulandı': 0, 'zaten kuyrukta': 0 };
   for (const cid of [...new Set(req.body.contact_ids || [])]) {

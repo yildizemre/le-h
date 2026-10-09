@@ -310,7 +310,7 @@ app.get('/api/found', auth, (req, res) => {
     FROM leads l JOIN contacts c ON c.id=l.contact_id JOIN campaigns k ON k.id=l.campaign_id WHERE k.status<>'arşiv'`;
   if (campaign) { sql += ' AND l.campaign_id=?'; a.push(+campaign); }
   if (q) { sql += ' AND (c.name LIKE ? OR c.company LIKE ? OR c.title LIKE ?)'; a.push(...Array(3).fill('%' + q + '%')); }
-  let rows = all(sql + ' GROUP BY c.id ORDER BY l.id DESC LIMIT 5000', ...a);
+  let rows = all(sql + ' GROUP BY c.id ORDER BY l.rowid DESC LIMIT 5000', ...a);
   const cfg = worker.roleCfg();
   rows.forEach(r => { r.target = !!worker.roleOk(r.title, cfg); r.looked = worker.LOOKED.includes(r.status); });
   const counts = { todo: 0, queued: 0, found: 0, none: 0, all: rows.length };

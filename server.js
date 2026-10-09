@@ -196,12 +196,13 @@ app.get('/api/rr/quota', auth, wrap(async (req, res) => res.json({ list: await r
 // AI kampanya önerileri: şirket profiline + mevcut kampanyalara bakıp yeni hedef pazarlar önerir (günlük önbellek)
 // OSB seçici: listeden tıklanan OSB'ler için kampanya; açılanlar ve gizlenenler listeden düşer
 const osb = require('./lib/osb');
+const arrSetting = k => { try { const v = JSON.parse(setting(k) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
 app.get('/api/osb', auth, (req, res) => {
-  const done = new Set(jsonSetting('osb_done', [])), hidden = new Set(jsonSetting('osb_hidden', []));
+  const done = new Set(arrSetting('osb_done')), hidden = new Set(arrSetting('osb_hidden'));
   res.json({ items: osb.list().filter(x => !done.has(x.key) && !hidden.has(x.key)), done: done.size, hidden: hidden.size });
 });
 app.post('/api/osb/start', auth, wrap(async (req, res) => {
-  const { keys = [], count = 30, sector = '' } = req.body, done = jsonSetting('osb_done', []), ids = [];
+  const { keys = [], count = 30, sector = '' } = req.body, done = arrSetting('osb_done'), ids = [];
   for (const k of keys.slice(0, 10)) {
     const x = osb.list().find(o => o.key === k); if (!x || done.includes(k)) continue;
     const short = x.name.replace(/\s*\(.*\)/, '');
@@ -211,7 +212,7 @@ app.post('/api/osb/start', auth, wrap(async (req, res) => {
   }
   setSetting('osb_done', JSON.stringify(done)); res.json({ ids });
 }));
-app.post('/api/osb/hide', auth, (req, res) => { const h = jsonSetting('osb_hidden', []); for (const k of req.body.keys || []) if (!h.includes(k)) h.push(k); setSetting('osb_hidden', JSON.stringify(h)); res.json({ ok: true }); });
+app.post('/api/osb/hide', auth, (req, res) => { const h = arrSetting('osb_hidden'); for (const k of req.body.keys || []) if (!h.includes(k)) h.push(k); setSetting('osb_hidden', JSON.stringify(h)); res.json({ ok: true }); });
 app.post('/api/osb/reset', auth, (req, res) => { setSetting('osb_hidden', '[]'); res.json({ ok: true }); });
 app.get('/api/ai/ideas', auth, wrap(async (req, res) => res.json(await insights.getIdeas(!!req.query.fresh))));
 // Otomatik günlük kampanya ayarı + şimdi çalıştır

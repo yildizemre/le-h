@@ -194,6 +194,25 @@ app.get('/api/companies/:id', auth, (req, res) => {
 });
 app.get('/api/rr/quota', auth, wrap(async (req, res) => res.json({ list: await rr.quotas(req.query.force), limits: { lookup: Math.ceil(rr.remaining('lookup') / 60), arama: Math.ceil(rr.remaining('arama') / 60) } })));
 // AI kampanya önerileri: şirket profiline + mevcut kampanyalara bakıp yeni hedef pazarlar önerir (günlük önbellek)
+// OSB seçici: listeden tıklanan OSB'ler için kampanya; açılanlar ve gizlenenler listeden düşer
+const osb = require('./lib/osb');
+app.get('/api/osb', auth, (req, res) => {
+  const done = new Set(jsonSetting('osb_done', [])), hidden = new Set(jsonSetting('osb_hidden', []));
+  res.json({ items: osb.list().filter(x => !done.has(x.key) && !hidden.has(x.key)), done: done.size, hidden: hidden.size });
+});
+app.post('/api/osb/start', auth, wrap(async (req, res) => {
+  const { keys = [], count = 30, sector = '' } = req.body, done = jsonSetting('osb_done', []), ids = [];
+  for (const k of keys.slice(0, 10)) {
+    const x = osb.list().find(o => o.key === k); if (!x || done.includes(k)) continue;
+    const short = x.name.replace(/\s*\(.*\)/, '');
+    ids.push(await worker.createQuick({ name: `🏭 ${short}${sector ? ' · ' + sector : ''}`, sector, location: `${x.name}, ${x.city}`, count,
+      note: `SADECE ${x.name} (${x.city}) içinde fabrikası/tesisi olan üretici firmalar. Firmanın adresinin bu OSB'de olduğundan emin ol.`, people: true, lookup: true }, req.user.id));
+    done.push(k);
+  }
+  setSetting('osb_done', JSON.stringify(done)); res.json({ ids });
+}));
+app.post('/api/osb/hide', auth, (req, res) => { const h = jsonSetting('osb_hidden', []); for (const k of req.body.keys || []) if (!h.includes(k)) h.push(k); setSetting('osb_hidden', JSON.stringify(h)); res.json({ ok: true }); });
+app.post('/api/osb/reset', auth, (req, res) => { setSetting('osb_hidden', '[]'); res.json({ ok: true }); });
 app.get('/api/ai/ideas', auth, wrap(async (req, res) => res.json(await insights.getIdeas(!!req.query.fresh))));
 // Otomatik günlük kampanya ayarı + şimdi çalıştır
 app.get('/api/auto-daily', auth, (req, res) => res.json({ ...insights.autoCfg(), last: setting('auto_daily_done'), list: all("SELECT id,name,created FROM campaigns WHERE auto=1 ORDER BY id DESC LIMIT 10") }));

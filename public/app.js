@@ -1719,4 +1719,42 @@ PAGES.found = tryT(async () => {
   await draw();
 });
 
+// ================= Kampanya Fikirleri: AI önerileri + OSB seçici =================
+PAGES.ideas = tryT(async () => {
+  const sel = new Set();
+  main.innerHTML = head('Kampanya Fikirleri', 'Aklına kampanya gelmiyorsa buradan seç: AI şirket profiline göre öneriyor ya da OSB listesinden tıklayıp o OSB\'deki üreticileri çıkarıyorsun. Açılan kampanya listeden kalkar.') +
+  `<div class="card" style="margin-bottom:16px"><div class="card-h"><h3>✨ AI önerileri</h3><button class="btn sm ghost" id="idRe">Yeni öneriler</button></div>
+    <p class="hint" style="margin-top:-4px">Ayrıca her iş günü sabah bu önerilerden biri <b>otomatik kampanya</b> olarak açılıyor (Ayarlar → Otomatik günlük kampanya).</p><div id="idL"></div></div>
+  <div class="card"><div class="card-h"><h3>🏭 Organize Sanayi Bölgeleri</h3><span class="mut" id="osbInfo"></span></div>
+    <p class="hint" style="margin-top:-4px">OSB'lere tıkla (birden fazla seçebilirsin) → "Kampanya başlat". AI sadece o OSB'de fabrikası olan üreticileri bulur, hedef birimdeki yetkiliyi ve mailini çıkarır.</p>
+    <div class="toolbar"><input id="osQ" placeholder="İl ya da OSB ara…" style="max-width:220px"><input id="osS" placeholder="Sektör (boş = tüm üreticiler)" style="max-width:240px">
+      <label class="inline">Firma sayısı <input id="osN" type="number" min="10" max="100" step="10" value="30" style="width:80px"></label><span class="sp"></span><a href="#" id="osReset" class="mut" style="font-size:12px">Gizlenenleri geri getir</a></div>
+    <div id="osL"></div></div>
+  <div class="selbar"><b id="osC">OSB seç</b><span class="sp"></span><button class="btn ghost" id="osHide">Gizle</button><button class="btn pri" id="osGo">🚀 Kampanya başlat</button></div>`;
+  ideasInto($('idL'));
+  $('idRe').onclick = () => ideasInto($('idL'), true);
+  let items = [];
+  const upd = () => { $('osC').textContent = sel.size ? `${sel.size} OSB seçili` : 'OSB seç'; };
+  const draw = () => {
+    const q = $('osQ').value.trim().toLocaleLowerCase('tr'), by = {};
+    for (const x of items) if (!q || (x.city + ' ' + x.name).toLocaleLowerCase('tr').includes(q)) (by[x.city] ||= []).push(x);
+    $('osL').innerHTML = Object.keys(by).length ? Object.entries(by).map(([city, xs]) => `<div class="osb-city"><b>${esc(city)}</b><div class="chips">${xs.map(x =>
+      `<button class="chip osb ${sel.has(x.key) ? 'on' : ''}" data-k="${esc(x.key)}">${esc(x.name)}</button>`).join('')}</div></div>`).join('') : empty('Eşleşen OSB yok');
+    upd();
+  };
+  const load = async () => { const d = await api('/api/osb'); items = d.items; $('osbInfo').textContent = `${items.length} OSB · ${d.done} kampanya açıldı${d.hidden ? ` · ${d.hidden} gizli` : ''}`; draw(); };
+  $('osL').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k; sel.has(k) ? sel.delete(k) : sel.add(k); b.classList.toggle('on'); upd(); };
+  $('osQ').oninput = draw;
+  $('osGo').onclick = e => busyBtn(e.currentTarget, async () => {
+    if (!sel.size) return toast('OSB seç', true); if (sel.size > 10) return toast('Tek seferde en fazla 10 OSB', true);
+    const n = +$('osN').value || 30;
+    if (!confirm(`${sel.size} OSB için kampanya açılacak (her birinde ~${n} firma). Firmalar, yetkililer ve mailler otomatik bulunur; otopilot doğrulanmış kişilere sabah mail atar. Devam?`)) return;
+    const r = await post('/api/osb/start', { keys: [...sel], count: n, sector: $('osS').value.trim() });
+    toast(`${r.ids.length} kampanya başlatıldı — firmalar bulunuyor`); sel.clear(); load();
+  }, 'Başlatılıyor');
+  $('osHide').onclick = tryT(async () => { if (!sel.size) return toast('Gizlenecek OSB seç', true); await post('/api/osb/hide', { keys: [...sel] }); sel.clear(); load(); });
+  $('osReset').onclick = tryT(async e => { e.preventDefault(); await post('/api/osb/reset'); load(); });
+  await load();
+});
+
 boot();

@@ -1772,4 +1772,57 @@ PAGES.ideas = tryT(async () => {
   await load();
 });
 
+// ================= Meta Reklamlar (analiz + form kişileri) =================
+PAGES.meta = tryT(async () => {
+  let preset = 'last_7d';
+  const P = { yesterday: 'Dün', last_7d: 'Son 7 gün', last_30d: 'Son 30 gün', this_month: 'Bu ay' };
+  const draw = async (check) => {
+    const d = await api(`/api/meta?preset=${preset}${check ? '&check=1' : ''}`), adm = ME.role === 'admin';
+    if (!d.on) {
+      main.innerHTML = head('Meta Reklamlar', 'Facebook / Instagram reklamlarının harcamasını ve sonucunu buradan izle; AI hangi reklamın iyi gittiğini, hangisinin para yaktığını söylesin. Reklam formunu dolduranlar otomatik Lead-AI\'a ve Telegram\'a düşer.') +
+      `<div class="card"><div class="card-h"><h3>Reklam hesabını bağla (sadece okuma)</h3></div>
+        <ol class="hint" style="padding-left:18px;line-height:1.75;margin:0 0 12px">
+          <li><a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener">business.facebook.com → İşletme ayarları → Kullanıcılar → <b>Sistem kullanıcıları</b></a> → <b>Ekle</b> → ad: "lead-ai", rol: <b>Çalışan</b>.</li>
+          <li>Sistem kullanıcısını seç → <b>Varlık ata</b> → <b>Reklam hesapları</b> → reklam hesabını seç → <b>"Performansı görüntüle"</b> izni yeterli. (Form kişileri için <b>Sayfalar</b> → Hype Vision sayfası → "Potansiyel müşterileri yönet" de ver.)</li>
+          <li><b>Belirteç oluştur</b> → uygulama: <b>hypevision-IG</b> → izinler: <b>ads_read</b>, <b>leads_retrieval</b>, <b>pages_show_list</b>, <b>pages_read_engagement</b> → süre: <b>Asla dolmasın</b> → belirteci kopyala.</li>
+          <li>Reklam hesabı numarası: <a href="https://adsmanager.facebook.com" target="_blank" rel="noopener">Reklam Yöneticisi</a>'nde sol üstte hesap adının altındaki numara (ya da adres çubuğundaki <b>act=</b> sonrası).</li>
+          <li>İkisini aşağıya yapıştır → Bağla. Token'ı kimseyle paylaşma; sohbete yazma.</li></ol>
+        ${adm ? `<div class="grid g2"><label>Reklam hesabı numarası<input id="mtA" value="${esc(d.account)}" placeholder="1234567890"></label><label>Erişim belirteci (token)<input id="mtT" type="password" autocomplete="off" placeholder="EAA…"></label></div>
+        <div class="row" style="margin-top:8px"><button class="btn pri" id="mtC">Bağla ve test et</button></div>` : '<p class="mut">Bağlamak için yönetici girişi gerekli.</p>'}</div>`;
+      if ($('mtC')) $('mtC').onclick = e => busyBtn(e.currentTarget, async () => { const r = await put('/api/meta', { account: $('mtA').value, token: $('mtT').value }); toast(`Bağlandı: ${r.me.name}`); await post('/api/meta/refresh', { preset }); draw(); }, 'Test ediliyor');
+      return;
+    }
+    const R = d.report?.t ? d.report : null, A = d.ai?.t ? d.ai : null, cur = R?.currency === 'TRY' || !R ? '₺' : R.currency + ' ';
+    const m = v => v == null ? '—' : cur + Number(v).toLocaleString('tr-TR', { maximumFractionDigits: 2 });
+    const T = R?.totals || {};
+    main.innerHTML = head('Meta Reklamlar', `${esc(R?.account || 'Reklam hesabı')} · ${R ? 'güncellendi ' + fmtDate(new Date(R.t).toISOString()) : 'henüz veri çekilmedi'}. Her sabah 09:00'da dünün özeti Telegram'a gelir; form dolduranlar 10 dk içinde Lead-AI'a düşer.`,
+      `<div class="tabs" id="mtP">${Object.entries(P).map(([k, v]) => `<button data-p="${k}" class="${k === preset ? 'on' : ''}">${v}</button>`).join('')}</div><button class="btn" id="mtR">↻ Yenile</button><button class="btn pri" id="mtAI">✨ AI analiz</button>`) +
+    `<div class="grid g5 kpis" style="margin-bottom:16px">${[[m(T.spend), 'Harcama'], [(T.impressions || 0).toLocaleString('tr-TR'), 'Gösterim'], [(T.link || 0).toLocaleString('tr-TR'), 'Link tıklama · CTR %' + (T.ctr ?? 0)],
+      [T.leads || 0, 'Form (potansiyel müşteri)'], [m(T.cpl), 'Kişi başı maliyet']].map(([v, l]) => `<div class="card kpi"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
+    ${A ? `<div class="card" style="margin-bottom:16px"><div class="card-h"><h3>✨ AI yorumu</h3><span class="mut" style="font-size:12px">${fmtDate(new Date(A.t).toISOString())}</span></div>
+      <p style="margin-top:0">${esc(A.summary || '')}</p>
+      <div class="grid g2">${A.good?.length ? `<div><b style="color:var(--ok)">İyi gidenler</b><ul>${A.good.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}${A.bad?.length ? `<div><b style="color:#dc2626">Para yakanlar / sorunlar</b><ul>${A.bad.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}</div>
+      ${A.actions?.length ? `<b>Yapılacaklar</b><ul>${A.actions.map(x => `<li><span class="pill ${x.impact === 'yüksek' ? 'bad' : x.impact === 'orta' ? 'warn' : ''}">${esc(x.impact || '')}</span> <b>${esc(x.do)}</b> — <span class="mut">${esc(x.why || '')}</span></li>`).join('')}</ul>` : ''}
+      <div class="grid g2">${A.creative?.length ? `<div><b>Yeni kreatif fikirleri</b><ul>${A.creative.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}${A.audience?.length ? `<div><b>Hedefleme</b><ul>${A.audience.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}</div></div>`
+      : `<div class="card" style="margin-bottom:16px"><p class="mut" style="margin:0">"✨ AI analiz" de: hangi reklam iyi, hangisi para yakıyor, bütçe nereye kaymalı, yeni kreatif fikirleri.</p></div>`}
+    ${R?.rows?.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Reklam</th><th>Harcama</th><th class="hide-m">Gösterim</th><th>Tıklama</th><th class="hide-m">CTR</th><th class="hide-m">Frekans</th><th>Form</th><th>Kişi başı</th></tr></thead><tbody>
+      ${R.rows.map(r => `<tr><td class="w"><b>${esc(r.ad)}</b><small>${esc(r.campaign)} · ${esc(r.adset)}</small></td><td>${m(r.spend)}</td><td class="hide-m">${r.impressions.toLocaleString('tr-TR')}</td><td>${r.link}</td>
+        <td class="hide-m"><span class="${r.ctr < 0.6 ? 'pill bad' : r.ctr >= 1 ? 'pill ok' : ''}">%${r.ctr}</span></td><td class="hide-m"><span class="${r.frequency > 3 ? 'pill warn' : ''}">${r.frequency}</span></td>
+        <td><b>${r.leads}</b>${r.msgs ? `<small>${r.msgs} mesaj</small>` : ''}</td><td>${m(r.cpl)}</td></tr>`).join('')}</tbody></table></div>`
+      : empty('Bu dönemde reklam verisi yok', R ? 'Seçili dönemde yayında reklam görünmüyor.' : '"↻ Yenile" ile verileri çek.')}
+    <div class="card" style="margin-top:16px"><div class="card-h"><h3>🔥 Formdan gelenler (${d.leads.length})</h3><button class="btn sm" id="mtL">Şimdi çek</button></div>
+      ${d.leads.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Kişi</th><th>Firma</th><th>İletişim</th><th class="hide-m">Reklam</th><th>Tarih</th></tr></thead><tbody>
+        ${d.leads.map(l => `<tr><td class="w"><b>${esc(l.name || '—')}</b><small>${esc(l.title || '')}</small></td><td>${esc(l.company || '—')}<small>${esc(l.city || '')}</small></td>
+          <td>${l.phone ? `<a href="tel:${esc(l.phone)}">${esc(l.phone)}</a>` : ''}${l.email ? `<small>${esc(l.email)}</small>` : ''}</td><td class="hide-m"><small>${esc(l.ad_name || '')}</small></td><td>${fmtDate(l.created)}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="mut" style="margin:0">Henüz form dolduran yok. Reklamlarda "Potansiyel müşteri" hedefi + anlık form kullanırsan buraya düşer.</p>'}
+      ${adm ? '<div class="row" style="margin-top:10px"><span class="sp"></span><button class="btn sm ghost" id="mtOff">Bağlantıyı kes</button></div>' : ''}</div>`;
+    $('mtP').onclick = e => { const b = e.target.closest('[data-p]'); if (!b) return; preset = b.dataset.p; draw(); };
+    $('mtR').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/meta/refresh', { preset }); draw(); }, 'Çekiliyor');
+    $('mtAI').onclick = e => busyBtn(e.currentTarget, async () => { await post('/api/meta/analyze', { preset }); draw(); }, 'AI inceliyor');
+    $('mtL').onclick = e => busyBtn(e.currentTarget, async () => { const r = await post('/api/meta/leads'); toast(`${r.added} yeni kişi`); draw(); }, 'Çekiliyor');
+    if ($('mtOff')) $('mtOff').onclick = tryT(async () => { if (!confirm('Meta reklam bağlantısı kesilsin mi?')) return; await put('/api/meta', { disconnect: true }); draw(); });
+  };
+  await draw();
+});
+
 boot();

@@ -758,6 +758,20 @@ app.put('/api/meetings/:id', auth, wrap(async (req, res) => { const b = req.body
   if (b.note != null) run('UPDATE meetings SET note=? WHERE id=?', String(b.note), id); res.json({ ok: true }); }));
 app.put('/api/booking-cfg', auth, admin, (req, res) => { setSetting('booking_cfg', JSON.stringify({ ...booking.cfg(), ...req.body })); res.json(booking.cfg()); });
 app.get('/api/contacts/:id/booking', auth, (req, res) => res.json({ link: booking.link(+req.params.id) }));
+const metaads = require('./lib/metaads');
+app.get('/api/meta', auth, cwrap(async req => {
+  const on = !!(setting('meta_ads_token') && metaads.acct()); let me = null, error = '';
+  if (on && req.query.check) { try { me = await metaads.me(); } catch (e) { error = e.message; } }
+  const preset = req.query.preset || 'last_7d';
+  return { on, me, error, account: setting('meta_ad_account') || '', report: jsonSetting('meta_report_' + preset, null), ai: jsonSetting('meta_ai_' + preset, null),
+    leads: all('SELECT * FROM meta_leads ORDER BY created DESC LIMIT 100') };
+}));
+app.put('/api/meta', auth, admin, cwrap(async req => { const b = req.body || {};
+  if (b.disconnect) { setSetting('meta_ads_token', ''); setSetting('meta_ad_account', ''); return { on: false }; }
+  setSetting('meta_ads_token', String(b.token || '').trim()); setSetting('meta_ad_account', String(b.account || '').trim()); return { on: true, me: await metaads.me() }; }));
+app.post('/api/meta/refresh', auth, cwrap(async req => metaads.report((req.body || {}).preset || 'last_7d')));
+app.post('/api/meta/analyze', auth, cwrap(async req => metaads.analyze((req.body || {}).preset || 'last_7d')));
+app.post('/api/meta/leads', auth, cwrap(async () => ({ added: await metaads.pullLeads() })));
 const content = require('./lib/content');
 app.get('/api/content', auth, (req, res) => res.json({ cfg: content.cfg(), items: all('SELECT * FROM content ORDER BY id DESC LIMIT 60') }));
 app.get('/api/content/:id/image', auth, (req, res) => { const f = content.file(+req.params.id); if (!require('fs').existsSync(f)) return res.status(404).end(); res.set('Cache-Control', 'no-cache'); res.sendFile(f); });
@@ -950,5 +964,5 @@ app.get('/cal/:k.ics', (req, res) => { if (!booking.calOk(req.params.k)) return 
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res, p) => res.setHeader('Cache-Control', /\.(html|js|css|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=604800') }));
 app.listen(PORT, () => {
   console.log(`Lead-AI: http://localhost:${PORT}`);
-  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start(); autopilot.start(); content.start(); blog.start();
+  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start(); autopilot.start(); content.start(); blog.start(); metaads.start();
 });

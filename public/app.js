@@ -1595,7 +1595,7 @@ PAGES.meetings = tryT(async () => {
 // ================= Blog (SEO) =================
 PAGES.blog = tryT(async () => {
   const d = await api('/api/blog'), c = d.cfg, DN = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-  main.innerHTML = head('Blog · SEO yazıları', `Her ${DN[c.weekday]} ${esc(c.time)}'da AI, aranma niyeti yüksek bir anahtar kelime için ~1300 kelimelik Türkçe makale taslağı yazar (web'de doğrulanmış bilgi, SSS + Google yapısal verisi). Kontrol et → HTML'i kopyala → hypevisionlab.com/blog'a ekle.`,
+  main.innerHTML = head('Blog · SEO yazıları', `Her ${DN[c.weekday]} ${esc(c.time)}'da AI, aranma niyeti yüksek bir anahtar kelime için ~1300 kelimelik Türkçe makale taslağı yazar (web'de doğrulanmış bilgi, SSS + Google yapısal verisi). Telegram'a haber gelir → burada oku, gerekirse düzelt → <b>Siteye yayınla</b>: hypevisionlab.com/blog'a otomatik eklenir.`,
     `<input id="bgK" placeholder="Anahtar kelime (boşsa sıradaki: ${esc(d.next || '—')})" style="width:280px"><button class="btn pri" id="bgGo">✍️ Şimdi yaz</button>`) +
   `<details class="card" style="margin-bottom:16px"><summary><b>Anahtar kelime listesi</b> <span class="mut">— sıradaki: ${esc(d.next || 'liste bitti')}</span></summary>
     <p class="hint">Her satıra bir kelime. Buraya yazdıkların hazır listenin önüne geçer (ör. müşterilerin Google'da aradığı ifadeler).</p>
@@ -1615,14 +1615,41 @@ async function openBlog(id) {
     <label>Meta açıklama (140-158 karakter)<textarea id="boM" rows="2">${esc(b.meta)}</textarea></label>
     <div class="preview blog-pv" style="max-height:46vh;overflow:auto">${b.html}</div>
     <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:12px"><button class="btn pri" id="boH">HTML'i kopyala</button><button class="btn" id="boMd">Markdown kopyala</button>
-      <button class="btn" id="boS">Kaydet</button><button class="btn" id="boP">Yayınlandı ✓</button><span class="sp"></span><button class="btn ghost" id="boD">Sil</button></div>
-    <p class="hint" style="margin-top:8px">HTML kopyası: başlık, makale, SSS ve Google yapısal verisini (Article + FAQPage) içerir. İçerikte uydurma rakam olmaması istendi ama yayınlamadan önce bir göz at.</p>`, m => {
+      <button class="btn" id="boS">Kaydet</button><span class="sp"></span><button class="btn ghost" id="boD">Sil</button></div>
+    <div class="card" id="boA" style="margin-top:12px"><span class="mut">Yayın kontrolü yapılıyor…</span></div>`, m => {
+    const renderAudit = async () => {
+      const box = m.querySelector('#boA');
+      try {
+        const a = await api('/api/blog/' + id + '/audit'), live = b.status === 'yayında';
+        box.innerHTML = `<b>Yayın kontrolü</b> <span class="mut">· ${a.words} kelime · ${esc(a.repo)}</span>
+          ${a.problems.length ? `<ul style="margin:8px 0;color:#c0392b">${a.problems.map(x => `<li>⛔ ${esc(x)}</li>`).join('')}</ul>` : '<p style="margin:8px 0;color:#1e8449">✓ Engelleyen sorun yok</p>'}
+          ${a.warnings.length ? `<ul style="margin:8px 0;color:#b9770e">${a.warnings.map(x => `<li>⚠️ ${esc(x)}</li>`).join('')}</ul>` : ''}
+          ${a.configured ? '' : '<p class="hint" style="color:#c0392b">Sunucuda BLOG_GH_TOKEN tanımlı değil — yayın yapılamaz.</p>'}
+          <div class="row" style="gap:6px;margin-top:8px">
+            <button class="btn pri" id="boPub" ${a.ok && a.configured ? '' : 'disabled'}>${live ? '🔄 Sitede güncelle' : '🚀 Siteye yayınla'}</button>
+            ${live ? '<button class="btn ghost" id="boUn">Yayından kaldır</button>' : ''}
+            ${b.url ? `<a class="btn ghost" href="${esc(b.url)}" target="_blank" rel="noopener">Sayfayı aç ↗</a>` : ''}</div>
+          <p class="hint" style="margin-top:6px">Yayınla → yazı hypevisionlab.com reposuna eklenir, Netlify birkaç dakikada derler, canlıya çıkınca Telegram'a haber gelir.</p>`;
+        const pb = box.querySelector('#boPub');
+        if (pb) pb.onclick = e => busyBtn(e.currentTarget, async () => {
+          await save();
+          if (!confirm(live ? 'Sitedeki yazı bu haliyle güncellensin mi?' : "Yazı hypevisionlab.com/blog'da yayınlansın mı?")) return;
+          const r = await post('/api/blog/' + id + '/publish', {});
+          toast('Yayına gönderildi: ' + r.url); closeModal(); PAGES.blog();
+        }, 'Yayınlanıyor');
+        const ub = box.querySelector('#boUn');
+        if (ub) ub.onclick = e => busyBtn(e.currentTarget, async () => {
+          if (!confirm('Yazı siteden kaldırılsın mı? (taslak olarak panelde kalır)')) return;
+          await post('/api/blog/' + id + '/unpublish', {}); toast('Yayından kaldırıldı'); closeModal(); PAGES.blog();
+        }, 'Kaldırılıyor');
+      } catch (e) { box.innerHTML = `<span style="color:#c0392b">Kontrol yapılamadı: ${esc(e.message)}</span>`; }
+    };
     const cp = async (t, msg) => { try { await navigator.clipboard.writeText(t); toast(msg); } catch { toast('Kopyalanamadı', true); } };
     m.querySelector('#boH').onclick = () => cp(b.export_html, 'HTML kopyalandı');
     m.querySelector('#boMd').onclick = () => cp(b.export_md, 'Markdown kopyalandı');
     const save = async extra => { await put('/api/blog/' + id, { title: m.querySelector('#boT').value, meta: m.querySelector('#boM').value, url: m.querySelector('#boU').value, ...extra }); };
-    m.querySelector('#boS').onclick = tryT(async () => { await save(); toast('Kaydedildi'); });
-    m.querySelector('#boP').onclick = tryT(async () => { await save({ status: 'yayında' }); toast('Yayında olarak işaretlendi'); closeModal(); PAGES.blog(); });
+    m.querySelector('#boS').onclick = tryT(async () => { await save(); toast('Kaydedildi'); renderAudit(); });
+    renderAudit();
     m.querySelector('#boD').onclick = tryT(async () => { if (!confirm('Silinsin mi?')) return; await del('/api/blog/' + id); closeModal(); PAGES.blog(); });
   });
 }

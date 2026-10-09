@@ -758,20 +758,6 @@ app.put('/api/meetings/:id', auth, wrap(async (req, res) => { const b = req.body
   if (b.note != null) run('UPDATE meetings SET note=? WHERE id=?', String(b.note), id); res.json({ ok: true }); }));
 app.put('/api/booking-cfg', auth, admin, (req, res) => { setSetting('booking_cfg', JSON.stringify({ ...booking.cfg(), ...req.body })); res.json(booking.cfg()); });
 app.get('/api/contacts/:id/booking', auth, (req, res) => res.json({ link: booking.link(+req.params.id) }));
-const metaads = require('./lib/metaads');
-app.get('/api/meta', auth, cwrap(async req => {
-  const on = !!(setting('meta_ads_token') && metaads.acct()); let me = null, error = '';
-  if (on && req.query.check) { try { me = await metaads.me(); } catch (e) { error = e.message; } }
-  const preset = req.query.preset || 'last_7d';
-  return { on, me, error, account: setting('meta_ad_account') || '', report: jsonSetting('meta_report_' + preset, null), ai: jsonSetting('meta_ai_' + preset, null),
-    leads: all('SELECT * FROM meta_leads ORDER BY created DESC LIMIT 100') };
-}));
-app.put('/api/meta', auth, admin, cwrap(async req => { const b = req.body || {};
-  if (b.disconnect) { setSetting('meta_ads_token', ''); setSetting('meta_ad_account', ''); return { on: false }; }
-  setSetting('meta_ads_token', String(b.token || '').trim()); setSetting('meta_ad_account', String(b.account || '').trim()); return { on: true, me: await metaads.me() }; }));
-app.post('/api/meta/refresh', auth, cwrap(async req => metaads.report((req.body || {}).preset || 'last_7d')));
-app.post('/api/meta/analyze', auth, cwrap(async req => metaads.analyze((req.body || {}).preset || 'last_7d')));
-app.post('/api/meta/leads', auth, cwrap(async () => ({ added: await metaads.pullLeads() })));
 const content = require('./lib/content');
 app.get('/api/content', auth, (req, res) => res.json({ cfg: content.cfg(), items: all('SELECT * FROM content ORDER BY id DESC LIMIT 60') }));
 app.get('/api/content/:id/image', auth, (req, res) => { const f = content.file(+req.params.id); if (!require('fs').existsSync(f)) return res.status(404).end(); res.set('Cache-Control', 'no-cache'); res.sendFile(f); });
@@ -796,6 +782,20 @@ app.post('/api/blog', auth, cwrap(async req => ({ id: await blog.write((req.body
 app.put('/api/blog/:id', auth, (req, res) => { const b = req.body || {}; for (const k of ['title', 'meta', 'html', 'status', 'url', 'tags']) if (b[k] != null) run(`UPDATE blog SET ${k}=? WHERE id=?`, String(b[k]), +req.params.id); res.json({ ok: true }); });
 app.delete('/api/blog/:id', auth, (req, res) => { run('DELETE FROM blog WHERE id=?', +req.params.id); res.json({ ok: true }); });
 app.put('/api/blog-cfg', auth, (req, res) => { const b = req.body || {}; if (b.keywords != null) setSetting('blog_keywords', String(b.keywords)); delete b.keywords; setSetting('blog_cfg', JSON.stringify({ ...blog.cfg(), ...b })); res.json(blog.cfg()); });
+const metaads = require('./lib/metaads');
+app.get('/api/meta', auth, cwrap(async req => {
+  const on = !!(setting('meta_ads_token') && metaads.acct()); let me = null, error = '';
+  if (on && req.query.check) { try { me = await metaads.me(); } catch (e) { error = e.message; } }
+  const preset = req.query.preset || 'last_7d';
+  return { on, me, error, account: setting('meta_ad_account') || '', report: jsonSetting('meta_report_' + preset, null), ai: jsonSetting('meta_ai_' + preset, null),
+    leads: all('SELECT * FROM meta_leads ORDER BY created DESC LIMIT 100') };
+}));
+app.put('/api/meta', auth, admin, cwrap(async req => { const b = req.body || {};
+  if (b.disconnect) { setSetting('meta_ads_token', ''); setSetting('meta_ad_account', ''); return { on: false }; }
+  setSetting('meta_ads_token', String(b.token || '').trim()); setSetting('meta_ad_account', String(b.account || '').trim()); return { on: true, me: await metaads.me() }; }));
+app.post('/api/meta/refresh', auth, cwrap(async req => metaads.report((req.body || {}).preset || 'last_7d')));
+app.post('/api/meta/analyze', auth, cwrap(async req => metaads.analyze((req.body || {}).preset || 'last_7d')));
+app.post('/api/meta/leads', auth, cwrap(async () => ({ added: await metaads.pullLeads() })));
 app.put('/api/content-cfg', auth, (req, res) => { setSetting('content_cfg', JSON.stringify({ ...content.cfg(), ...req.body })); res.json(content.cfg()); });
 app.get('/api/autopilot', auth, (req, res) => res.json({ ...autopilot.cfg(), partner_offer: ai.partnerOffer(), partner_pool: autopilot.candidates(200, true).length, last: jsonSetting('autopilot_last', null), day: setting('autopilot_day'), pool: autopilot.candidates(500).length }));
 app.put('/api/autopilot', auth, admin, (req, res) => {

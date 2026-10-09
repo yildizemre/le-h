@@ -765,8 +765,8 @@ const cwrap = fn => async (req, res) => { try { res.json(await fn(req)); } catch
 app.post('/api/content/generate', auth, cwrap(async req => { const b = req.body || {}; const ids = await content.generate(b.kind ? { kind: b.kind, topic: b.topic || '' } : { posts: 1, stories: 2, topic: b.topic || '' }); return { ids }; }));
 app.post('/api/content/:id/regen', auth, cwrap(async req => { await content.regenImage(+req.params.id); return { ok: true }; }));
 app.put('/api/content/:id', auth, cwrap(async req => { const b = req.body || {}, id = +req.params.id;
-  for (const k of ['headline', 'sub', 'caption', 'hashtags', 'status']) if (b[k] != null) run(`UPDATE content SET ${k}=? WHERE id=?`, String(b[k]), id);
-  if (b.headline != null || b.sub != null) await content.rerender(id); return { ok: true }; }));
+  for (const k of ['headline', 'sub', 'caption', 'hashtags', 'status', 'alert', 'module', 'cam']) if (b[k] != null) run(`UPDATE content SET ${k}=? WHERE id=?`, String(b[k]), id);
+  if (['headline', 'sub', 'alert', 'module', 'cam'].some(k => b[k] != null)) await content.rerender(id); return { ok: true }; }));
 app.delete('/api/content/:id', auth, (req, res) => { run('DELETE FROM content WHERE id=?', +req.params.id); res.json({ ok: true }); });
 app.post('/api/content/:id/instagram', auth, cwrap(async req => content.igPublish(+req.params.id)));
 app.get('/api/instagram', auth, cwrap(async () => { const on = !!(setting('ig_token') && setting('ig_user_id')); let me = null, error = '';

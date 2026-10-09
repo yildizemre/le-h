@@ -1524,12 +1524,14 @@ async function autopilotCard(el) {
 PAGES.content = tryT(async () => {
   const d = await api('/api/content'), c = d.cfg;
   const img = it => `/api/content/${it.id}/image?v=${encodeURIComponent(it.headline + it.sub + (it.status || ''))}${Date.now() % 1e6}`;
-  main.innerHTML = head('İçerik Stüdyosu', `Her sabah ${esc(c.time)}'da AI ${c.posts} post + ${c.stories} story hazırlar (İSG, modüller, KVKK…). Görseller AI üretimidir, gerçek kayıt gibi algılanabilecekler "temsili görsel" etiketlidir. Telefonda <b>Paylaş</b> → Instagram'ı seç.`,
+  main.innerHTML = head('İçerik Stüdyosu', `Her sabah ${esc(c.time)}'da AI ${c.posts} post + ${c.stories} story hazırlar (İSG, modüller, KVKK…). Görseller güvenlik kamerası açısıyla üretilir; algılama kutuları, kamera bilgisi ve alarm bandı üstüne basılır. Telefonda <b>Paylaş</b> → Instagram'ı seç.`,
     `<input id="ctT" placeholder="Konu (boşsa AI seçer)" style="width:220px"><select id="ctK" style="width:auto"><option value="">1 post + 2 story</option><option value="post">1 post</option><option value="story">1 story</option></select><button class="btn pri" id="ctG">✨ Üret</button>`) +
   (d.items.length ? `<div class="ct-grid">${d.items.map(it => `<div class="card ct" data-ct="${it.id}">
     <div class="ct-img ${it.kind}">${it.image ? `<img src="${img(it)}" loading="lazy" alt="">` : `<div class="mut" style="padding:20px">${it.status === 'hata' ? '⚠️ ' + esc(it.error || 'hata') : '⏳ hazırlanıyor'}</div>`}</div>
     <div class="row" style="gap:6px"><span class="pill">${it.kind === 'story' ? 'Story' : 'Post'}</span>${pill(it.status)}<span class="mut" style="font-size:12px">${esc(it.day || '')}</span></div>
-    <label>Başlık<input data-f="headline" value="${esc(it.headline)}"></label><label>Alt satır<input data-f="sub" value="${esc(it.sub)}"></label>
+    <div class="grid g2" style="gap:8px"><label>Alarm bandı<input data-f="alert" value="${esc(it.alert || '')}"></label><label>Modül<input data-f="module" value="${esc(it.module || '')}"></label></div>
+    <label>Kamera etiketi<input data-f="cam" value="${esc(it.cam || '')}"></label>
+    <label>Başlık<input data-f="headline" value="${esc(it.headline)}"></label><label>Modül açıklaması<input data-f="sub" value="${esc(it.sub)}"></label>
     <label>Açıklama<textarea data-f="caption" rows="5">${esc(it.caption)}</textarea></label><label>Etiketler<input data-f="hashtags" value="${esc(it.hashtags)}"></label>
     <div class="row" style="flex-wrap:wrap;gap:6px">${it.image ? `<button class="btn sm pri" data-a="share">📤 Paylaş</button><a class="btn sm" href="${img(it)}" download="hypevision-${it.id}.jpg">İndir</a>` : ''}
       <button class="btn sm" data-a="copy">Metni kopyala</button><button class="btn sm" data-a="save">Metni kaydet</button><button class="btn sm" data-a="regen">Yeni görsel</button>
@@ -1547,7 +1549,7 @@ PAGES.content = tryT(async () => {
         if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], text: text() }); toast('Metin panoda — Instagram\'da açıklamaya yapıştır'); }
         else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); toast('Bu cihaz doğrudan paylaşmıyor: görsel indirildi, metin panoda. Telefondan açarsan Instagram\'ı seçebilirsin.'); }
       }
-      if (b.dataset.a === 'save') await busyBtn(b, async () => { await put('/api/content/' + id, { headline: f('headline'), sub: f('sub'), caption: f('caption'), hashtags: f('hashtags') }); toast('Kaydedildi, görsel yeniden basıldı'); PAGES.content(); }, 'Basılıyor');
+      if (b.dataset.a === 'save') await busyBtn(b, async () => { await put('/api/content/' + id, { headline: f('headline'), sub: f('sub'), caption: f('caption'), hashtags: f('hashtags'), alert: f('alert'), module: f('module'), cam: f('cam') }); toast('Kaydedildi, görsel yeniden basıldı'); PAGES.content(); }, 'Basılıyor');
       if (b.dataset.a === 'regen') await busyBtn(b, async () => { await post(`/api/content/${id}/regen`); toast('Yeni görsel hazır'); PAGES.content(); }, 'Üretiliyor');
       if (b.dataset.a === 'done') { await put('/api/content/' + id, { status: 'paylaşıldı' }); PAGES.content(); }
       if (b.dataset.a === 'del') { if (!confirm('Silinsin mi?')) return; await del('/api/content/' + id); card.remove(); }

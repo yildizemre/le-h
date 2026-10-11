@@ -1600,13 +1600,13 @@ PAGES.blog = tryT(async () => {
   `<details class="card" style="margin-bottom:16px"><summary><b>Anahtar kelime listesi</b> <span class="mut">— sıradaki: ${esc(d.next || 'liste bitti')}</span></summary>
     <p class="hint">Her satıra bir kelime. Buraya yazdıkların hazır listenin önüne geçer (ör. müşterilerin Google'da aradığı ifadeler).</p>
     <textarea id="bgKw" rows="5" placeholder="forklift çarpışma önleme&#10;depo iş güvenliği">${esc(d.keywords)}</textarea>
-    <div class="row" style="margin-top:8px"><label class="inline"><span class="switch"><input type="checkbox" id="bgOn" ${c.enabled ? 'checked' : ''}><i></i></span> Haftalık otomatik</label><span class="sp"></span><button class="btn" id="bgKs">Kaydet</button></div></details>
+    <div class="row" style="margin-top:8px"><label class="inline"><span class="switch"><input type="checkbox" id="bgOn" ${c.enabled ? 'checked' : ''}><i></i></span> Haftalık otomatik</label><label class="inline" style="margin-left:14px"><span class="switch"><input type="checkbox" id="bgAp" ${c.autoPublish !== false ? 'checked' : ''}><i></i></span> Kontrolden geçerse siteye otomatik yayınla</label><span class="sp"></span><button class="btn" id="bgKs">Kaydet</button></div></details>
   ${d.items.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Başlık</th><th class="hide-m">Anahtar kelime</th><th>Durum</th><th></th></tr></thead><tbody>
     ${d.items.map(b => `<tr><td class="w"><b>${esc(b.title)}</b><small>/blog/${esc(b.slug)} · ${Math.round(b.size / 7)} kelime · ${fmtDate(b.created)}</small></td><td class="hide-m">${esc(b.keyword)}</td><td>${pill(b.status)}</td>
       <td><button class="btn sm" data-bo="${b.id}">Aç</button></td></tr>`).join('')}</tbody></table></div>`
   : empty('Henüz yazı yok', 'İlk yazı haftalık zamanda otomatik gelir; beklemek istemiyorsan "Şimdi yaz".')}`;
   $('bgGo').onclick = e => busyBtn(e.currentTarget, async () => { const r = await post('/api/blog', { keyword: $('bgK').value.trim() }); toast('Yazı hazır'); await PAGES.blog(); openBlog(r.id); }, 'AI yazıyor (1-2 dk)');
-  $('bgKs').onclick = tryT(async () => { await put('/api/blog-cfg', { keywords: $('bgKw').value, enabled: $('bgOn').checked }); toast('Kaydedildi'); PAGES.blog(); });
+  $('bgKs').onclick = tryT(async () => { await put('/api/blog-cfg', { keywords: $('bgKw').value, enabled: $('bgOn').checked, autoPublish: $('bgAp').checked }); toast('Kaydedildi'); PAGES.blog(); });
   main.querySelectorAll('[data-bo]').forEach(b => b.onclick = () => openBlog(+b.dataset.bo));
 });
 async function openBlog(id) {

@@ -1858,4 +1858,30 @@ PAGES.meta = tryT(async () => {
   await draw();
 });
 
+// ================= Sonuç Ölçümü (2 aylık deneme) =================
+PAGES.results = tryT(async () => {
+  const r = await api('/api/results'), t = r.total, T = r.target;
+  const V = { erken: ['', '⏳'], iyi: ['ok', '✅'], orta: ['warn', '🟡'], kotu: ['bad', '🔴'] }[r.verdict.level] || ['', ''];
+  const bar = (v, goal, unit = '') => { const p = Math.min(100, goal ? v / goal * 100 : 0); return `<div class="rbar"><i style="width:${p}%;background:${v >= goal ? 'var(--ok)' : p > 50 ? '#f59e0b' : '#ef4444'}"></i></div><small class="mut">${v}${unit} / hedef ${goal}${unit}</small>`; };
+  const row = (x, name, meet = true) => `<tr><td class="w"><b>${esc(name)}</b></td><td>${x.sent}</td><td class="hide-m">${x.people}</td><td>${x.replies} <small class="mut">%${x.replyRate}</small></td>
+    <td>${x.positive} <small class="mut">%${x.posRate}</small></td>${meet ? `<td><b>${x.meetings ?? '—'}</b></td><td class="hide-m">${x.meet1000}</td>` : ''}<td class="hide-m"><span class="${x.bounceRate > 3 ? 'pill bad' : ''}">%${x.bounceRate}</span></td></tr>`;
+  const head5 = meet => `<thead><tr><th></th><th>Mail</th><th class="hide-m">Kişi</th><th>Cevap</th><th>Olumlu</th>${meet ? '<th>Toplantı</th><th class="hide-m">1000 mailde</th>' : ''}<th class="hide-m">Geri dönen</th></tr></thead>`;
+  const maxW = Math.max(1, ...r.weeks.map(w => w.sent));
+  main.innerHTML = head('Sonuç Ölçümü', `2 aylık deneme: ${esc(r.window.start)} → ${esc(r.window.end)} · ${r.day}. gün, ${r.daysLeft} gün kaldı. Hedef: cevap oranı %${T.reply}+ ve 1000 mailde ${T.meet1000}+ toplantı. Her pazartesi 09:30 özet Telegram'a gelir.`) +
+  `<div class="card" style="margin-bottom:16px;border-left:4px solid ${V[0] === 'ok' ? 'var(--ok)' : V[0] === 'warn' ? '#f59e0b' : V[0] === 'bad' ? '#ef4444' : 'var(--line)'}"><b>${V[1]} Durum</b><p style="margin:6px 0 0">${esc(r.verdict.text)}</p></div>
+  <div class="grid g5 kpis" style="margin-bottom:16px">${[[t.sent, 'Gönderilen mail'], [t.people, 'Ulaşılan kişi'], [t.replies, 'Cevap veren'], [t.positive, 'Olumlu (ilgi/soru)'], [t.meetings, 'Toplantı']].map(([v, l]) => `<div class="card kpi"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
+  <div class="grid g3" style="margin-bottom:16px">
+    <div class="card"><b>Cevap oranı</b>${bar(t.replyRate, T.reply, '%')}</div>
+    <div class="card"><b>1000 mailde toplantı</b>${bar(t.meet1000, T.meet1000)}</div>
+    <div class="card"><b>Örneklem</b>${bar(t.sent, T.minSent)}<small class="mut" style="display:block">anlamlı karar için en az ${T.minSent} mail</small></div></div>
+  <div class="card" style="margin-bottom:16px"><div class="card-h"><h3>Haftalık</h3><span class="mut" style="font-size:12px">Elle gönderilen ${r.extra.manual} · Meta formu ${r.extra.meta} · Yaklaşan toplantı ${r.extra.upcoming}</span></div>
+    <div class="wk">${r.weeks.map(w => `<div class="wkc"><div class="wkb"><i style="height:${Math.round(w.sent / maxW * 100)}%"></i></div><b>${w.sent}</b><small>${w.replies} cevap · ${w.meetings} toplantı</small><span class="mut">${esc(w.week.slice(5).split('-').reverse().join('.'))}</span></div>`).join('')}</div></div>
+  <h3 style="margin:6px 0 10px">Kampanyalara göre</h3>
+  ${r.campaigns.length ? `<div class="tw"><table class="tbl">${head5(true)}<tbody>${r.campaigns.map(c => row(c, (c.kind === 'partner' ? '🤝 ' : '') + c.name)).join('')}</tbody></table></div>` : empty('Bu dönemde gönderim yok')}
+  <div class="grid g2" style="margin-top:16px">
+    <div><h3 style="margin:6px 0 10px">Gönderen kutulara göre</h3>${r.senders.length ? `<div class="tw"><table class="tbl">${head5(false)}<tbody>${r.senders.map(s => row(s, s.name || s.email, false)).join('')}</tbody></table></div>` : empty('—')}</div>
+    <div><h3 style="margin:6px 0 10px">Mail türüne göre</h3>${r.templates.length ? `<div class="tw"><table class="tbl">${head5(false)}<tbody>${r.templates.map(s => row(s, s.name, false)).join('')}</tbody></table></div>` : empty('—')}</div></div>
+  <p class="hint" style="margin-top:14px">Açılma oranı bilinçli olarak ölçülmüyor: takip pikseli Gmail'de spam sinyalidir. Cevap ve toplantı asıl ölçü. "Cevap" otomatik izin/tatil yanıtlarını saymaz; aynı kişinin birden fazla cevabı 1 sayılır.</p>`;
+});
+
 boot();

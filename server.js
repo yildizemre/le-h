@@ -800,6 +800,8 @@ app.put('/api/meta', auth, admin, cwrap(async req => { const b = req.body || {};
 app.post('/api/meta/refresh', auth, cwrap(async req => metaads.report((req.body || {}).preset || 'last_7d')));
 app.post('/api/meta/analyze', auth, cwrap(async req => metaads.analyze((req.body || {}).preset || 'last_7d')));
 app.post('/api/meta/leads', auth, cwrap(async () => ({ added: await metaads.pullLeads() })));
+const results = require('./lib/results');
+app.get('/api/results', auth, (req, res) => res.json(results.report({ from: req.query.from, to: req.query.to })));
 app.put('/api/content-cfg', auth, (req, res) => { setSetting('content_cfg', JSON.stringify({ ...content.cfg(), ...req.body })); res.json(content.cfg()); });
 app.get('/api/autopilot', auth, (req, res) => res.json({ ...autopilot.cfg(), partner_offer: ai.partnerOffer(), partner_pool: autopilot.candidates(200, true).length, last: jsonSetting('autopilot_last', null), day: setting('autopilot_day'), pool: autopilot.candidates(500).length }));
 app.put('/api/autopilot', auth, admin, (req, res) => {
@@ -968,5 +970,5 @@ app.get('/cal/:k.ics', (req, res) => { if (!booking.calOk(req.params.k)) return 
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res, p) => res.setHeader('Cache-Control', /\.(html|js|css|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=604800') }));
 app.listen(PORT, () => {
   console.log(`Lead-AI: http://localhost:${PORT}`);
-  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start(); autopilot.start(); content.start(); blog.start(); metaads.start();
+  worker.start(); mailer.start(); inbox.start(); insights.start(); warmup.start(); health.start(); autopilot.start(); content.start(); blog.start(); metaads.start(); results.start();
 });

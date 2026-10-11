@@ -749,6 +749,12 @@ const booking = require('./lib/booking');
 // ---- Online randevu (herkese açık uçlar: giriş gerektirmez, IP başına sınırlı) ----
 const bkHits = {};
 const bkLimit = (req, res, next) => { const k = req.ip, t = Date.now(), h = (bkHits[k] || []).filter(x => t - x < 10 * 60e3); h.push(t); bkHits[k] = h; return h.length > 40 ? res.status(429).json({ error: 'Çok fazla istek, biraz sonra deneyin' }) : next(); };
+const IG_ORIGINS = ['https://hypevisionlab.com', 'https://www.hypevisionlab.com'];
+app.get('/api/public/ig-reels', bkLimit, async (req, res) => {
+  const o = req.get('origin'); if (IG_ORIGINS.includes(o) || /^https:\/\/[a-z0-9-]+--hypevisionlab\.netlify\.app$/.test(o || '') || /^http:\/\/localhost:\d+$/.test(o || '')) res.set('Access-Control-Allow-Origin', o);
+  res.set('Cache-Control', 'public, max-age=900');
+  try { res.json({ items: await require('./lib/content').igReels() }); } catch (e) { res.status(503).json({ items: [], error: 'unavailable' }); }
+});
 app.get('/api/public/booking/:tok', bkLimit, (req, res) => { const i = booking.info(req.params.tok); i ? res.json(i) : res.status(404).json({ error: 'Geçersiz bağlantı' }); });
 app.post('/api/public/booking/:tok', bkLimit, wrap(async (req, res) => res.json(await booking.book(req.params.tok, req.body || {}))));
 app.get('/api/meetings', auth, (req, res) => res.json({ cfg: booking.cfg(), cal: booking.calUrl(), general: booking.link(null),

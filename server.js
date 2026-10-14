@@ -591,6 +591,7 @@ app.post('/api/outbox/compose-multi', auth, wrap(async (req, res) => {
     if (!t) { out.skipped.push({ id: c.id, why: 'şablon seçilmedi' }); continue; }
     if (mailer.suppressed(c)) { out.skipped.push({ id: c.id, why: 'engel listesinde' }); continue; }
     if (c.manual_sent && !force) { out.skipped.push({ id: c.id, why: 'elle gönderilmiş' }); continue; }
+    if (!force && c.title && !worker.roleOk(c.title, worker.roleCfg())) { out.skipped.push({ id: c.id, why: 'hedef dışı unvan (satış/muhasebe/İK vb.)' }); continue; }
     if (!force && get("SELECT 1 FROM outbox WHERE lower(to_email)=? AND step=0 AND (status IN ('sırada','taslak') OR (status='gönderildi' AND sent_at>=?))", c.email.toLowerCase(), since)) {
       out.skipped.push({ id: c.id, why: 'son 60 günde zaten mail gitti / kuyrukta' }); continue;
     }

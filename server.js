@@ -19,10 +19,10 @@ const health = require('./lib/health');
 const autopilot = require('./lib/autopilot');
 
 const PORT = process.env.PORT || 5230;
-if (setting('tpl_seed') !== 'v1') {
+if (setting('tpl_seed') !== 'v2') {
   for (const t of require('./lib/templates-seed'))
     if (!get('SELECT 1 FROM templates WHERE name=?', t.name)) run('INSERT INTO templates(user_id,name,subject,body) VALUES(1,?,?,?)', t.name, t.subject, t.body);
-  setSetting('tpl_seed', 'v1');
+  setSetting('tpl_seed', 'v2');
 }
 const app = express();
 app.disable('x-powered-by');
@@ -812,6 +812,7 @@ app.put('/api/content-cfg', auth, (req, res) => { setSetting('content_cfg', JSON
 app.get('/api/autopilot', auth, (req, res) => res.json({ ...autopilot.cfg(), partner_offer: ai.partnerOffer(), partner_pool: autopilot.candidates(200, true).length, last: jsonSetting('autopilot_last', null), day: setting('autopilot_day'), pool: autopilot.candidates(500).length }));
 app.put('/api/autopilot', auth, admin, (req, res) => {
   const c = { ...autopilot.cfg(), ...req.body };
+  c.days = (Array.isArray(c.days) ? c.days : [1, 2, 3, 4, 5]).map(Number).filter(d => d >= 0 && d <= 6); if (!c.days.length) c.days = [1, 2, 3, 4, 5];
   c.min = Math.max(1, Math.min(5, +c.min || 3)); c.max = Math.max(c.min, Math.min(5, +c.max || 4)); c.enabled = !!c.enabled; c.personal = c.personal !== false;
   c.time = /^\d{1,2}:\d{2}$/.test(c.time || '') ? c.time : '09:38'; c.partner_daily = Math.max(0, Math.min(10, +c.partner_daily || 0));
   if (req.body.partner_offer != null) setSetting('partner_offer', String(req.body.partner_offer).trim()); delete c.partner_offer;

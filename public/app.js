@@ -1100,7 +1100,7 @@ const tplOpts = (sel, none = '— şablon seç —') => `<option value="">${none
 const autoTpl = c => {
   const t = `${c.title || ''} ${c.company || ''}`.toLowerCase(), en = /@[^@]+\.(com|de|co\.uk|fr|it|nl|es|us|pl|hu|ro|cz|at|ch|be|se|dk|no|ie|ca|mx|br|ae|sa|qa)$/.test(c.email || '') && !/[çğıöşü]/i.test((c.name || '') + (c.company || '')) && !/\.tr$/.test(c.email || '');
   const pick = re => TPLS.find(x => re.test(x.name))?.id;
-  if (en) return /plant|production|operation|manufactur/.test(t) ? pick(/^EN · Downtime/) : pick(/^EN · Safety/);
+  if (en) return pick(/^EN · Meeting request/) || (/plant|production|operation|manufactur/.test(t) ? pick(/^EN · Downtime/) : pick(/^EN · Safety/));
   if (/osgb|isg danışman|güvenlik sistem|cctv|entegrat|otomasyon/.test(t)) return pick(/^Çözüm ortaklığı/);
   if (/isg|iş güvenliği|hse|ehs|safety|güvenlik/.test(t)) return pick(/^İSG · KKD/);
   if (/kalite|quality/.test(t)) return pick(/^Kalite/);
@@ -1119,6 +1119,19 @@ function abSplit(ids, a, b) {
   return { map: out, wa };
 }
 PAGES.maillist = tryT(async () => {
+  try { await PAGES._maillist(); } finally {
+    const a = await api('/api/autopilot').catch(() => null); if (!a || !main.querySelector('.ph')) return;
+    const DN = { 1: 'Pzt', 2: 'Sal', 3: 'Çar', 4: 'Per', 5: 'Cum', 6: 'Cmt', 0: 'Paz' }, days = (a.days || [1, 2, 3, 4, 5]).map(d => DN[d]).join(', ');
+    const el = document.createElement('div'); el.className = 'card'; el.style.margin = '0 0 14px'; el.id = 'apBox';
+    main.querySelector('.ph').after(el);
+    const draw = () => { el.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:10px"><div><b>🤖 Otomatik gönderim ${a.enabled ? '<span class="pill ok">açık</span>' : '<span class="pill">kapalı</span>'}</b>
+      <small class="mut" style="display:block">${a.enabled ? `${days} günleri ${esc(a.time)}'da her aktif kutudan ${a.min}–${a.max} yeni kişiye kişiye özel toplantı maili (yabancılara İngilizce). Hazır aday: ${a.pool}.` : 'Kapalı — bu listeden sadece senin seçtiklerine mail gider.'}</small></div>
+      <div class="row" style="gap:6px">${ME.role === 'admin' ? `<button class="btn sm" id="apTg">${a.enabled ? 'Durdur' : 'Aç'}</button>` : ''}<a class="btn sm" href="#settings">Ayarla (gün, saat, sayı)</a></div></div>`;
+      const tg = el.querySelector('#apTg'); if (tg) tg.onclick = tryT(async () => { a.enabled = !a.enabled; await put('/api/autopilot', { enabled: a.enabled, time: a.time, min: a.min, max: a.max, personal: a.personal, partner_daily: a.partner_daily, days: a.days }); toast(a.enabled ? 'Otomatik gönderim açıldı' : 'Otomatik gönderim durduruldu'); draw(); }); };
+    draw();
+  }
+});
+PAGES._maillist = tryT(async () => {
   const [tp, st] = await Promise.all([api('/api/templates'), api('/api/templates/stats')]); await loadCamps();
   TPLS = tp; TSTATS = Object.fromEntries(st.map(x => [x.id, x]));
   let rows = [], choice = {}, f = { campaign: '', q: '', state: 'new' };
@@ -1716,9 +1729,10 @@ autopilotCard = async function (el) {
   row.insertAdjacentHTML('beforebegin', `<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px"><b>🤝 Çözüm ortağı (partner) mailleri</b>
     <p class="hint" style="margin:4px 0 8px">Aktif "Çözüm ortağı" kampanyalarındaki OSGB / İSG danışmanlık / CCTV entegratörü yöneticilerine her gün toplam bu kadar ortaklık maili gider (müşteri mailleriyle aynı kutu limitleri içinde). Hazır aday: <b>${a.partner_pool}</b>${a.partner_pool ? '' : ' — Firma Bul → 🤝 Çözüm ortağı ile kampanya başlat'}.</p>
     <div class="grid g3"><label>Günlük partner maili<input type="number" id="apPD" min="0" max="10" value="${a.partner_daily}" ${dis}></label></div>
+    <div style="margin-top:6px"><b style="font-size:13px">Gönderim günleri</b><div class="row" style="gap:10px;flex-wrap:wrap;margin-top:6px">${[[1, 'Pzt'], [2, 'Sal'], [3, 'Çar'], [4, 'Per'], [5, 'Cum'], [6, 'Cmt'], [0, 'Paz']].map(([d, l]) => `<label class="inline"><input type="checkbox" class="apD" value="${d}" ${(a.days || [1, 2, 3, 4, 5]).includes(d) ? 'checked' : ''} ${dis}> ${l}</label>`).join('')}</div></div>
     <label>Ortaklık modeli (AI mailde bunu anlatır)<textarea id="apPO" rows="3" ${dis}>${esc(a.partner_offer)}</textarea></label></div>`);
   if (!adm) return;
-  $('apS').onclick = tryT(async () => { await put('/api/autopilot', { enabled: $('apE').checked, time: $('apT').value.trim(), min: +$('apMin').value, max: +$('apMax').value, personal: $('apP').checked, partner_daily: +$('apPD').value, partner_offer: $('apPO').value }); toast('Otopilot kaydedildi'); autopilotCard(el); });
+  $('apS').onclick = tryT(async () => { await put('/api/autopilot', { enabled: $('apE').checked, time: $('apT').value.trim(), min: +$('apMin').value, max: +$('apMax').value, personal: $('apP').checked, partner_daily: +$('apPD').value, partner_offer: $('apPO').value, days: [...el.querySelectorAll('.apD:checked')].map(x => +x.value) }); toast('Otopilot kaydedildi'); autopilotCard(el); });
 };
 
 // ================= Bulunan Kişiler (tüm kampanyalar tek listede) =================

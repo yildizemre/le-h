@@ -864,15 +864,18 @@ app.put('/api/contacts/:id/li', auth, (req, res) => {
 });
 app.post('/api/senders', auth, admin, wrap(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase(), pass = String(req.body.pass || '').replace(/\s+/g, '');
-  if (!/@/.test(email) || pass.length < 12) throw Object.assign(new Error('Gmail adresi ve 16 haneli uygulama şifresi gerekli'), { status: 400 });
-  const s = { id: 0, email, pass, name: req.body.name || '' };
+  if (!/@/.test(email) || pass.length < 8) throw Object.assign(new Error('Mail adresi ve uygulama şifresi gerekli'), { status: 400 });
+  // sağlayıcı: seçilmediyse alan adının MX kaydından bulunur (Gmail / Zoho / Outlook / özel)
+  const provider = mailer.PROVIDERS[req.body.provider] ? req.body.provider : await mailer.detectProvider(email);
+  const s = { id: 0, email, pass, name: req.body.name || '', provider, smtp_host: String(req.body.smtp_host || '').trim(), smtp_port: +req.body.smtp_port || 0, imap_host: String(req.body.imap_host || '').trim() };
   await mailer.testSender(s, email, req.user.signature); // önce bağlantıyı doğrula (kendine test maili)
-  run('INSERT INTO senders(email,pass,name,daily) VALUES(?,?,?,?) ON CONFLICT(email) DO UPDATE SET pass=excluded.pass, name=excluded.name, active=1, note=\'\'',
-    email, pass, req.body.name || '', Math.max(5, Math.min(40, +req.body.daily || 30)));
+  run('INSERT INTO senders(email,pass,name,daily,provider,smtp_host,smtp_port,imap_host) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(email) DO UPDATE SET pass=excluded.pass, name=excluded.name, provider=excluded.provider, smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port, imap_host=excluded.imap_host, active=1, note=\'\'',
+    email, pass, req.body.name || '', Math.max(5, Math.min(40, +req.body.daily || 30)), provider, s.smtp_host, s.smtp_port, s.imap_host);
   if (!setting('gmail_user')) { setSetting('gmail_user', email); setSetting('gmail_pass', pass); }
   setSetting('sending_paused', '0');
-  res.json({ ok: true });
+  res.json({ ok: true, provider });
 }));
+app.get('/api/providers', auth, async (req, res) => res.json({ list: mailer.PROVIDERS, detected: req.query.email ? await mailer.detectProvider(String(req.query.email)) : null }));
 app.put('/api/senders/:id', auth, admin, (req, res) => {
   const { name, daily, active, pass, signature } = req.body, id = +req.params.id;
   if (signature !== undefined) run('UPDATE senders SET signature=? WHERE id=?', String(signature), id);

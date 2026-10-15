@@ -871,6 +871,8 @@ app.post('/api/senders', auth, admin, wrap(async (req, res) => {
   await mailer.testSender(s, email, req.user.signature); // önce bağlantıyı doğrula (kendine test maili)
   run('INSERT INTO senders(email,pass,name,daily,provider,smtp_host,smtp_port,imap_host) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(email) DO UPDATE SET pass=excluded.pass, name=excluded.name, provider=excluded.provider, smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port, imap_host=excluded.imap_host, active=1, note=\'\'',
     email, pass, req.body.name || '', Math.max(5, Math.min(40, +req.body.daily || 30)), provider, s.smtp_host, s.smtp_port, s.imap_host);
+  // Yeni kutu: 14 günlük ısınma bugünden başlar (yeni alan adı/kutu hemen soğuk mail atmasın)
+  run('UPDATE senders SET warmup_start=?, warmup_on=1 WHERE email=? AND warmup_start IS NULL', new Date().toISOString(), email);
   if (!setting('gmail_user')) { setSetting('gmail_user', email); setSetting('gmail_pass', pass); }
   setSetting('sending_paused', '0');
   res.json({ ok: true, provider });

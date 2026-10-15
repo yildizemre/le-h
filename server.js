@@ -223,6 +223,33 @@ app.put('/api/auto-daily', auth, admin, (req, res) => {
 });
 app.post('/api/auto-daily/run', auth, wrap(async (req, res) => { const r = await insights.autoCampaign(true); if (!r) throw Object.assign(new Error('Yeni öneri kalmadı'), { status: 400 }); res.json(r); }));
 // Kullanım: RocketReach bütçe + OpenAI maliyeti
+// ChatGPT harcama + tahmini kalan bakiye. OpenAI normal anahtarla bakiye vermez: yüklenen tutar elle girilir, harcama sistemin kendi kaydından düşülür.
+// İsteğe bağlı OpenAI Admin anahtarı (sk-admin-…) girilirse bu ayın gerçek faturalanan maliyeti de çekilir.
+app.get('/api/ai-balance', auth, wrap(async (req, res) => {
+  const days = ai.usage(400), trDay = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10), month = trDay.slice(0, 7);
+  const sum = f => +days.filter(f).reduce((a, d) => a + (+d.usd || 0), 0).toFixed(2);
+  const dep = jsonSetting('openai_deposit', {});
+  const out = { today: sum(d => d.day === trDay), month: sum(d => d.day.startsWith(month)), last7: sum(d => d.day >= new Date(Date.now() + 3 * 3600e3 - 6 * 864e5).toISOString().slice(0, 10)),
+    deposit: +dep.amount || 0, since: dep.date || '', admin: !!setting('openai_admin_key') };
+  if (out.deposit) { out.spentSince = sum(d => d.day >= (dep.date || '0000')); out.remaining = +(out.deposit - out.spentSince).toFixed(2); }
+  out.perDay = +(out.last7 / 7).toFixed(2); if (out.remaining != null && out.perDay > 0) out.daysLeft = Math.floor(out.remaining / out.perDay);
+  const ak = setting('openai_admin_key');
+  if (ak) {
+    try {
+      const st = Math.floor(Date.parse(month + '-01T00:00:00Z') / 1000);
+      const r = await fetch(`https://api.openai.com/v1/organization/costs?start_time=${st}&limit=31`, { headers: { Authorization: 'Bearer ' + ak }, signal: AbortSignal.timeout(20000) });
+      const j = await r.json();
+      if (j.data) out.realMonth = +j.data.reduce((a, b) => a + (b.results || []).reduce((x, y) => x + (+y.amount?.value || 0), 0), 0).toFixed(2); else out.realError = j.error?.message || 'okunamadı';
+    } catch (e) { out.realError = e.message; }
+  }
+  res.json(out);
+}));
+app.put('/api/ai-balance', auth, admin, (req, res) => {
+  const b = req.body || {};
+  if (b.amount != null) setSetting('openai_deposit', JSON.stringify({ amount: Math.max(0, +b.amount || 0), date: /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') ? b.date : new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10) }));
+  if (b.admin_key != null) setSetting('openai_admin_key', String(b.admin_key).trim());
+  res.json({ ok: true });
+});
 app.get('/api/usage', auth, wrap(async (req, res) => res.json({ rr: await rr.lookupBudget(), rr_month_budget: +setting('rr_month_budget') || 0, ai: ai.usage(30) })));
 app.put('/api/usage', auth, admin, (req, res) => { setSetting('rr_month_budget', String(Math.max(0, +req.body.rr_month_budget || 0))); res.json({ ok: true }); });
 // Hedef birim filtresi (hangi unvanlar yetkili olarak alınır / alınmaz)

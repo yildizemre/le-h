@@ -1920,14 +1920,14 @@ PAGES.dash = tryT(async (...a) => {
   anchor.after(el);
 });
 
-// ================= Ana panel: ChatGPT harcama / bakiye kartı =================
+// ================= Ana panel: hype-ai-model harcama / bakiye kartı =================
 const _dashPage2 = PAGES.dash;
 PAGES.dash = tryT(async (...a) => {
   await _dashPage2(...a);
   const b = await api('/api/ai-balance').catch(() => null); const after = main.querySelector('.today') || main.querySelector('.ph') || main.firstElementChild; if (!b || !after) return;
   const $u = v => '$' + Number(v || 0).toFixed(2), pct = b.deposit ? Math.max(0, Math.min(100, Math.round((b.remaining ?? 0) / b.deposit * 100))) : 0;
   const el = document.createElement('div'); el.className = 'card today'; el.style.marginBottom = '16px';
-  el.innerHTML = `<div class="td-head"><div><h3 style="margin-top:0">🤖 ChatGPT harcama</h3><small class="mut">Sistemin kendi kaydı (tahmini)${b.realMonth != null ? ` · OpenAI'ın gerçek faturası bu ay: <b>${$u(b.realMonth)}</b>` : ''}${b.realError ? ' · gerçek maliyet okunamadı' : ''}</small></div>
+  el.innerHTML = `<div class="td-head"><div><h3 style="margin-top:0">🧠 hype-ai-model</h3><small class="mut">Sistemin kendi kaydı (tahmini)${b.realMonth != null ? ` · OpenAI'ın gerçek faturası bu ay: <b>${$u(b.realMonth)}</b>` : ''}${b.realError ? ' · gerçek maliyet okunamadı' : ''}</small></div>
       <div class="row" style="gap:6px"><a class="btn sm" href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noopener">OpenAI bakiye ↗</a>${ME.role === 'admin' ? '<button class="btn sm pri" id="aiDep">Bakiye gir</button>' : ''}</div></div>
     <div class="td-tiles" style="grid-template-columns:repeat(4,minmax(0,1fr))">${[['Bugün', $u(b.today), '#2563eb'], ['Bu ay', $u(b.month), '#7c3aed'], ['Günlük ortalama (7 gün)', $u(b.perDay), '#0891b2'],
       [b.deposit ? 'Tahmini kalan' : 'Kalan bakiye', b.deposit ? $u(b.remaining) + (b.daysLeft != null ? ` <small class="mut" style="font-size:13px">~${b.daysLeft} gün</small>` : '') : '<small class="mut" style="font-size:14px">"Bakiye gir" ile ekle</small>', (b.remaining ?? 99) < 5 ? '#dc2626' : '#16a34a']]
@@ -1935,7 +1935,7 @@ PAGES.dash = tryT(async (...a) => {
     ${b.deposit ? `<div class="td-prog"><div class="row" style="justify-content:space-between"><small class="mut">${esc(b.since)} tarihinde yüklenen ${$u(b.deposit)} · harcanan ${$u(b.spentSince)}</small><small class="mut">%${pct} kaldı</small></div><div class="td-bar"><i style="width:${pct}%;${pct < 20 ? 'background:#ef4444' : ''}"></i></div></div>` : ''}`;
   after.after(el);
   const d = el.querySelector('#aiDep');
-  if (d) d.onclick = () => modal('ChatGPT bakiyesi', `<p class="hint" style="margin-top:0">OpenAI kalan bakiyeyi API ile vermiyor. platform.openai.com → Billing'de gördüğün bakiyeyi (ya da yüklediğin tutarı) gir; sistem o tarihten beri yaptığı harcamayı düşüp kalanı tahmin eder.</p>
+  if (d) d.onclick = () => modal('hype-ai-model bakiyesi', `<p class="hint" style="margin-top:0">OpenAI kalan bakiyeyi API ile vermiyor. platform.openai.com → Billing'de gördüğün bakiyeyi (ya da yüklediğin tutarı) gir; sistem o tarihten beri yaptığı harcamayı düşüp kalanı tahmin eder.</p>
     <div class="grid g2"><label>Bakiye / yüklenen tutar ($)<input id="dA" type="number" step="0.01" min="0" value="${b.deposit || ''}"></label><label>Tarih<input id="dD" type="date" value="${esc(b.since || new Date().toISOString().slice(0, 10))}"></label></div>
     <label>İsteğe bağlı: OpenAI Admin anahtarı (gerçek faturayı okumak için, sk-admin-…)<input id="dK" type="password" autocomplete="off" placeholder="${b.admin ? 'kayıtlı — değiştirmek için yaz' : 'platform.openai.com → Settings → Admin keys'}"></label>
     <div class="row" style="margin-top:12px"><span class="sp"></span><button class="btn pri" id="dS">Kaydet</button></div>`, m => {

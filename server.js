@@ -819,7 +819,9 @@ app.get('/api/today', auth, (req, res) => {
   const mt = get("SELECT count(*) n FROM meetings WHERE status<>'iptal' AND created>=?", from.replace('T', ' ').slice(0, 19))?.n || 0;
   const bounced = get("SELECT count(*) n FROM outbox WHERE status='geri döndü' AND sent_at>=?", from)?.n || 0;
   const sent = by.reduce((a, b) => a + (b.first || 0) + (b.fu || 0), 0);
-  res.json({ sent, first: by.reduce((a, b) => a + (b.first || 0), 0), fu: by.reduce((a, b) => a + (b.fu || 0), 0), by, queued: q.n || 0, queuedFirst: q.first || 0, replies: rep, meetings: mt, bounced,
+  const ex = (autopilot.cfg().exclude || []).map(x => String(x).toLowerCase());
+  const boxes = mailer.senderStats().filter(s => s.active && !ex.includes(s.email.toLowerCase())).map(s => ({ email: s.email, name: s.name, today: s.today, daily: s.daily }));
+  res.json({ boxes, capacity: boxes.reduce((a, b) => a + b.daily, 0), sent, first: by.reduce((a, b) => a + (b.first || 0), 0), fu: by.reduce((a, b) => a + (b.fu || 0), 0), by, queued: q.n || 0, queuedFirst: q.first || 0, replies: rep, meetings: mt, bounced,
     autopilot: { ...autopilot.cfg(), last: jsonSetting('autopilot_last', null), day: setting('autopilot_day') } });
 });
 app.put('/api/content-cfg', auth, (req, res) => { setSetting('content_cfg', JSON.stringify({ ...content.cfg(), ...req.body })); res.json(content.cfg()); });

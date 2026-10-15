@@ -1904,12 +1904,19 @@ PAGES.dash = tryT(async (...a) => {
   await _dashPage(...a);
   const t = await api('/api/today').catch(() => null); const anchor = main.querySelector('.ph') || main.firstElementChild; if (!t || !anchor) return;
   const ap = t.autopilot || {}, ran = ap.day === new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
-  const el = document.createElement('div'); el.className = 'card'; el.style.marginBottom = '16px';
-  el.innerHTML = `<div class="card-h"><h3>📤 Bugün</h3><a href="#outbox/gönderildi" class="btn sm ghost">Gönderilenler →</a></div>
-    <div class="grid g5 kpis" style="margin:4px 0 10px">${[[t.sent, 'Gönderilen mail'], [t.first, 'Yeni kişi (ilk mail)'], [t.fu, 'Takip'], [t.queued, 'Bugün sırada'], [t.replies + (t.meetings ? ' · ' + t.meetings + ' toplantı' : ''), 'Cevap']]
-      .map(([v, l]) => `<div class="kpi" style="padding:6px 0"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
-    ${t.by.length ? `<div class="row" style="flex-wrap:wrap;gap:8px">${t.by.map(b => `<span class="pill">${esc((b.name || b.email).split(' ')[0])}: ${(b.first || 0) + (b.fu || 0)}${b.rep ? ' + ' + b.rep + ' yanıt' : ''}</span>`).join('')}${t.bounced ? `<span class="pill bad">${t.bounced} geri döndü</span>` : ''}</div>` : '<p class="mut" style="margin:0">Bugün henüz mail gitmedi.</p>'}
-    <p class="hint" style="margin:10px 0 0">🤖 Otopilot ${ap.enabled ? `açık — ${esc(ap.time)}'da kutu başı ${ap.min}${ap.max !== ap.min ? '–' + ap.max : ''} yeni kişi. ${ran ? `Bugün çalıştı: ${ap.last?.n ?? 0} kişi kuyruğa alındı, gün içine yayılarak gidiyor.` : 'Bugün henüz çalışmadı.'}` : 'kapalı'}</p>`;
+  const el = document.createElement('div'); el.className = 'card today'; el.style.marginBottom = '16px';
+  const I = { send: '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>', redo: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>' };
+  const ic = k => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I[k]}</svg>`;
+  const pct = t.capacity ? Math.min(100, Math.round(t.sent / t.capacity * 100)) : 0;
+  const tiles = [['send', t.sent, 'Gönderilen', '#2563eb'], ['user', t.first, 'Yeni kişi', '#0891b2'], ['redo', t.fu, 'Takip', '#7c3aed'], ['clock', t.queued, 'Sırada', '#d97706'], ['chat', t.replies + (t.meetings ? ` · ${t.meetings}📅` : ''), 'Cevap', '#16a34a']];
+  el.innerHTML = `<div class="td-head"><div><span class="td-live"><i></i>${ap.enabled ? 'Otopilot açık' : 'Otopilot kapalı'}</span><h3>Bugün</h3>
+      <small class="mut">${new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}${ap.enabled ? ` · ${esc(ap.time)}'da kutu başı ${ap.min}${ap.max !== ap.min ? '–' + ap.max : ''} yeni kişi${ran ? ` · bugün ${ap.last?.n ?? 0} kişi kuyruğa alındı` : ' · henüz çalışmadı'}` : ''}</small></div>
+      <a href="#outbox/gönderildi" class="btn sm">Gönderilenler →</a></div>
+    <div class="td-tiles">${tiles.map(([k, v, l, c]) => `<div class="td-tile" style="--c:${c}"><span class="td-ic">${ic(k)}</span><b>${v}</b><span>${l}</span></div>`).join('')}</div>
+    <div class="td-prog"><div class="row" style="justify-content:space-between"><b style="font-size:13px">Günlük kapasite</b><span class="mut" style="font-size:12.5px">${t.sent} / ${t.capacity} mail · %${pct}</span></div><div class="td-bar"><i style="width:${pct}%"></i></div></div>
+    <div class="td-boxes">${(t.boxes || []).map(b => { const p = b.daily ? Math.min(100, Math.round(b.today / b.daily * 100)) : 0; return `<div class="td-box"><span class="avt" style="--c:#0f2a5c">${esc((b.name || b.email)[0].toUpperCase())}</span>
+        <div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between"><b>${esc((b.name || b.email).split(' ')[0])}</b><small class="mut">${b.today}/${b.daily}${b.daily === 0 ? ' · beklemede' : ''}</small></div><div class="td-bar sm"><i style="width:${p}%"></i></div></div></div>`; }).join('')}
+      ${t.bounced ? `<span class="pill bad">${t.bounced} geri döndü</span>` : ''}</div>`;
   anchor.after(el);
 });
 

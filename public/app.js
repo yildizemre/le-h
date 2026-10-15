@@ -1902,7 +1902,7 @@ PAGES.results = tryT(async () => {
 const _dashPage = PAGES.dash;
 PAGES.dash = tryT(async (...a) => {
   await _dashPage(...a);
-  const t = await api('/api/today').catch(() => null); if (!t || !main.querySelector('.ph')) return;
+  const t = await api('/api/today').catch(() => null); const anchor = main.querySelector('.ph') || main.firstElementChild; if (!t || !anchor) return;
   const ap = t.autopilot || {}, ran = ap.day === new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
   const el = document.createElement('div'); el.className = 'card'; el.style.marginBottom = '16px';
   el.innerHTML = `<div class="card-h"><h3>📤 Bugün</h3><a href="#outbox/gönderildi" class="btn sm ghost">Gönderilenler →</a></div>
@@ -1910,7 +1910,7 @@ PAGES.dash = tryT(async (...a) => {
       .map(([v, l]) => `<div class="kpi" style="padding:6px 0"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
     ${t.by.length ? `<div class="row" style="flex-wrap:wrap;gap:8px">${t.by.map(b => `<span class="pill">${esc((b.name || b.email).split(' ')[0])}: ${(b.first || 0) + (b.fu || 0)}${b.rep ? ' + ' + b.rep + ' yanıt' : ''}</span>`).join('')}${t.bounced ? `<span class="pill bad">${t.bounced} geri döndü</span>` : ''}</div>` : '<p class="mut" style="margin:0">Bugün henüz mail gitmedi.</p>'}
     <p class="hint" style="margin:10px 0 0">🤖 Otopilot ${ap.enabled ? `açık — ${esc(ap.time)}'da kutu başı ${ap.min}${ap.max !== ap.min ? '–' + ap.max : ''} yeni kişi. ${ran ? `Bugün çalıştı: ${ap.last?.n ?? 0} kişi kuyruğa alındı, gün içine yayılarak gidiyor.` : 'Bugün henüz çalışmadı.'}` : 'kapalı'}</p>`;
-  main.querySelector('.ph').after(el);
+  anchor.after(el);
 });
 
 boot();

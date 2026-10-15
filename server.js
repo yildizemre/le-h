@@ -809,6 +809,19 @@ app.post('/api/meta/analyze', auth, cwrap(async req => metaads.analyze((req.body
 app.post('/api/meta/leads', auth, cwrap(async () => ({ added: await metaads.pullLeads() })));
 const results = require('./lib/results');
 app.get('/api/results', auth, (req, res) => res.json(results.report({ from: req.query.from, to: req.query.to })));
+// Bugün: gönderilen / kuyrukta / cevap / toplantı — ana panel kartı
+app.get('/api/today', auth, (req, res) => {
+  const d = new Date(Date.now() + 3 * 3600e3); d.setUTCHours(0, 0, 0, 0); const from = new Date(d.getTime() - 3 * 3600e3).toISOString();
+  const by = all(`SELECT s.email, s.name, sum(o.step=0) first, sum(o.step>0 AND o.step<100) fu, sum(o.step>=100) rep FROM outbox o JOIN senders s ON s.id=o.sender_id
+    WHERE o.status IN ('gönderildi','geri döndü') AND o.sent_at>=? GROUP BY s.id ORDER BY s.id`, from);
+  const q = get("SELECT count(*) n, sum(step=0) first FROM outbox WHERE status='sırada' AND step<100 AND (scheduled_at IS NULL OR scheduled_at<?)", new Date(d.getTime() + 21 * 3600e3).toISOString()) || {};
+  const rep = get("SELECT count(*) n FROM replies WHERE label NOT IN ('otomatik cevap') AND COALESCE(received_at, created)>=?", from)?.n || 0;
+  const mt = get("SELECT count(*) n FROM meetings WHERE status<>'iptal' AND created>=?", from.replace('T', ' ').slice(0, 19))?.n || 0;
+  const bounced = get("SELECT count(*) n FROM outbox WHERE status='geri döndü' AND sent_at>=?", from)?.n || 0;
+  const sent = by.reduce((a, b) => a + (b.first || 0) + (b.fu || 0), 0);
+  res.json({ sent, first: by.reduce((a, b) => a + (b.first || 0), 0), fu: by.reduce((a, b) => a + (b.fu || 0), 0), by, queued: q.n || 0, queuedFirst: q.first || 0, replies: rep, meetings: mt, bounced,
+    autopilot: { ...autopilot.cfg(), last: jsonSetting('autopilot_last', null), day: setting('autopilot_day') } });
+});
 app.put('/api/content-cfg', auth, (req, res) => { setSetting('content_cfg', JSON.stringify({ ...content.cfg(), ...req.body })); res.json(content.cfg()); });
 app.get('/api/autopilot', auth, (req, res) => res.json({ ...autopilot.cfg(), partner_offer: ai.partnerOffer(), partner_pool: autopilot.candidates(200, true).length, last: jsonSetting('autopilot_last', null), day: setting('autopilot_day'), pool: autopilot.candidates(500).length }));
 app.put('/api/autopilot', auth, admin, (req, res) => {

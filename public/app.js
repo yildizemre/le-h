@@ -1943,4 +1943,50 @@ PAGES.dash = tryT(async (...a) => {
   });
 });
 
+// ================= Takip Masası: mail atıldı, cevap yok → telefon + LinkedIn =================
+PAGES.followup = tryT(async () => {
+  let f = 'todo', q = '';
+  const TABS = [['todo', 'Yapılacak'], ['call', 'Aranacak'], ['li', 'LinkedIn'], ['done', 'Yapıldı'], ['all', 'Tümü']];
+  const CS = [['ulaşıldı', '📞 Ulaştım'], ['ulaşılamadı', '🔁 Ulaşamadım'], ['geri ara', '⏰ Geri ara'], ['ilgilendi', '🔥 İlgilendi'], ['ilgisiz', '🚫 İlgisiz'], ['yanlış kişi', '↪️ Yanlış kişi']];
+  main.innerHTML = head('Takip Masası', 'Mail attığımız ama cevap vermeyen kişiler. Telefonla ara, LinkedIn\'den bağlantı isteği gönder, sonucu işaretle. "İlgilendi" dersen otomatik mailler durur ve Telegram\'a haber düşer.') +
+    `<div class="toolbar"><input id="fuQ" placeholder="İsim, firma, unvan…" style="max-width:260px"><div class="tabs" id="fuT"></div></div><div id="fuL"></div>`;
+  const tel = p => String(p || '').replace(/[^\d+]/g, '');
+  const liSearch = r => 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(`${r.name} ${r.company || ''}`);
+  const draw = async () => {
+    const d = await api('/api/followup?' + new URLSearchParams({ f, q }));
+    $('fuT').innerHTML = TABS.map(([k, t]) => `<button data-t="${k}" class="${f === k ? 'on' : ''}">${t} <span class="mut">${d.counts[k]}</span></button>`).join('');
+    $('fuL').innerHTML = d.rows.length ? d.rows.map(r => {
+      let ph = []; try { ph = JSON.parse(r.phones || '[]').map(x => x.number || x).filter(Boolean); } catch {}
+      const phones = [...new Set([r.co_phone, ...ph].filter(Boolean))];
+      return `<div class="card fu" data-id="${r.id}">
+        <div class="fu-top"><div class="ent">${avatar(r.name)}<div><div class="n"><b>${esc(r.name)}</b> <span class="mut">· ${esc(r.title || '')}</span></div>
+          <small>${favicon(r.domain || String(r.email).split('@')[1])} <b>${esc(r.company || '')}</b>${r.city || r.location ? ' · ' + esc(r.city || r.location) : ''}</small></div></div>
+          <div class="fu-st">${r.call_status ? pill(r.call_status) : ''}${r.li_sent ? '<span class="pill ok">LinkedIn ✓</span>' : ''}</div></div>
+        <div class="fu-grid">
+          <div><span class="mut">✉️ Mail</span><b>${esc(r.email)}</b><small>${r.mails} mail · son ${fmtDate(r.last_sent)} · ${esc((r.sender_name || r.sender || '').split(' ')[0])} kutusundan</small></div>
+          <div><span class="mut">📞 Telefon</span>${phones.length ? phones.map(p => `<a href="tel:${esc(tel(p))}"><b>${esc(p)}</b></a>`).join('<br>') : `<button class="btn sm" data-a="phone" ${r.company_id ? '' : 'disabled'}>Numara bul</button>`}</div>
+          <div><span class="mut">💼 LinkedIn</span>${r.linkedin ? `<a href="${esc(/^https?:/.test(r.linkedin) ? r.linkedin : 'https://' + r.linkedin)}" target="_blank" rel="noopener"><b>Profili aç ↗</b></a>` : `<a href="${liSearch(r)}" target="_blank" rel="noopener">LinkedIn'de ara ↗</a>`}
+            ${r.li_note ? `<small class="fu-note">“${esc(r.li_note)}”</small><button class="btn sm ghost" data-a="copy">Notu kopyala</button>` : `<button class="btn sm ghost" data-a="note">Bağlantı notu yaz</button>`}</div>
+        </div>
+        <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">${CS.map(([k, l]) => `<button class="btn sm ${r.call_status === k ? 'pri' : ''}" data-cs="${k}">${l}</button>`).join('')}
+          <span class="sp"></span><button class="btn sm ${r.li_sent ? 'pri' : ''}" data-a="li">${r.li_sent ? 'LinkedIn gönderildi ✓' : 'LinkedIn isteği gönderdim'}</button></div>
+        <input class="fu-in" data-a="noteinput" placeholder="Arama notu (ör. kalite müdürü Ahmet Bey'e yönlendirdi, pazartesi aranacak)" value="${esc(r.call_note || '')}">
+      </div>`; }).join('') : empty({ todo: 'Takip edilecek kimse kalmadı 🎉', call: 'Aranacak kimse yok', li: 'LinkedIn profili olan bekleyen kişi yok', done: 'Henüz takip yapılmadı', all: 'Mail atılan kişi yok' }[f]);
+  };
+  $('fuT').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { f = b.dataset.t; draw(); } };
+  let t; $('fuQ').oninput = e => { clearTimeout(t); t = setTimeout(() => { q = e.target.value; draw(); }, 300); };
+  $('fuL').onclick = tryT(async e => {
+    const card = e.target.closest('[data-id]'); if (!card) return; const id = card.dataset.id;
+    const cs = e.target.closest('[data-cs]'), a = e.target.closest('[data-a]')?.dataset.a;
+    const note = card.querySelector('[data-a="noteinput"]').value.trim();
+    if (cs) { await put('/api/followup/' + id, { call_status: cs.dataset.cs, call_note: note }); toast('Kaydedildi'); return draw(); }
+    if (a === 'li') { const on = !e.target.closest('[data-a]').classList.contains('pri'); await put('/api/followup/' + id, { li_sent: on }); toast(on ? 'LinkedIn işaretlendi' : 'İşaret kaldırıldı'); return draw(); }
+    if (a === 'copy') { const n = card.querySelector('.fu-note')?.textContent.replace(/^“|”$/g, '') || ''; try { await navigator.clipboard.writeText(n); toast('Not kopyalandı — LinkedIn\'de "Not ekle"ye yapıştır'); } catch { toast('Kopyalanamadı', true); } return; }
+    if (a === 'note') { const b = e.target.closest('[data-a]'); return busyBtn(b, async () => { await post('/api/linkedin/notes', { ids: [+id] }); draw(); }, 'Yazılıyor'); }
+    if (a === 'phone') { const r = await api('/api/followup?' + new URLSearchParams({ f: 'all', q: '' })); const row = r.rows.find(x => x.id == id); if (row?.company_id) { await post('/api/companies/contact-info', { ids: [row.company_id] }); toast('Numara aranıyor — 1-2 dk sonra sayfayı yenile'); } }
+  });
+  $('fuL').onchange = tryT(async e => { if (e.target.dataset.a !== 'noteinput') return; const id = e.target.closest('[data-id]').dataset.id; await put('/api/followup/' + id, { call_note: e.target.value.trim() }); toast('Not kaydedildi'); });
+  await draw();
+});
+
 boot();

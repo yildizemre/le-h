@@ -989,6 +989,39 @@ app.post('/api/signals/:id/add', auth, (req, res) => {
 app.put('/api/signals/:id', auth, (req, res) => { run('UPDATE signals SET status=? WHERE id=?', req.body.status || 'gizli', +req.params.id); res.json({ ok: true }); });
 
 // ---- Arama listesi (firma santrali + varsa yetkili telefonu) ----
+// Takip Masası: mail atılıp cevap vermeyen kişiler — telefon + LinkedIn ile elle takip
+app.get('/api/followup', auth, (req, res) => {
+  const { f = 'todo', q } = req.query, a = [];
+  let sql = `SELECT c.id, c.name, c.title, c.company, c.email, c.linkedin, c.li_note, c.li_sent, c.phones, c.location,
+      l.stage, l.company_id, co.phone AS co_phone, co.gen_email, co.call_status, co.call_note, co.called_at, co.domain, co.city,
+      min(o.sent_at) AS first_sent, max(o.sent_at) AS last_sent, count(o.id) AS mails, s.name AS sender_name, s.email AS sender
+    FROM outbox o JOIN contacts c ON c.id=o.contact_id
+    LEFT JOIN leads l ON l.contact_id=c.id AND l.campaign_id=o.campaign_id
+    LEFT JOIN companies co ON co.id=l.company_id
+    LEFT JOIN senders s ON s.id=o.sender_id
+    WHERE o.step<100 AND o.status='gönderildi'
+      AND NOT EXISTS(SELECT 1 FROM replies r WHERE r.contact_id=c.id AND r.label<>'otomatik cevap')`;
+  if (q) { sql += ' AND (c.name LIKE ? OR c.company LIKE ? OR c.title LIKE ?)'; a.push(...Array(3).fill('%' + q + '%')); }
+  sql += ' GROUP BY c.id';
+  let rows = all(sql + ' ORDER BY last_sent DESC LIMIT 1000', ...a);
+  const done = r => (r.call_status && r.call_status !== 'ulaşılamadı') || r.li_sent;
+  const counts = { todo: rows.filter(r => !done(r)).length, call: rows.filter(r => !r.call_status || r.call_status === 'ulaşılamadı').length, li: rows.filter(r => r.linkedin && !r.li_sent).length, done: rows.filter(done).length, all: rows.length };
+  if (f === 'todo') rows = rows.filter(r => !done(r));
+  if (f === 'call') rows = rows.filter(r => !r.call_status || r.call_status === 'ulaşılamadı');
+  if (f === 'li') rows = rows.filter(r => r.linkedin && !r.li_sent);
+  if (f === 'done') rows = rows.filter(done);
+  res.json({ counts, rows });
+});
+app.put('/api/followup/:id', auth, (req, res) => {
+  const b = req.body || {}, id = +req.params.id;
+  const l = get('SELECT company_id, campaign_id FROM leads WHERE contact_id=? AND company_id IS NOT NULL ORDER BY rowid DESC LIMIT 1', id);
+  if (b.call_status != null && l?.company_id) run('UPDATE companies SET call_status=?, call_note=COALESCE(?, call_note), called_at=? WHERE id=?', String(b.call_status), b.call_note ?? null, new Date().toISOString(), l.company_id);
+  else if (b.call_note != null && l?.company_id) run('UPDATE companies SET call_note=? WHERE id=?', String(b.call_note), l.company_id);
+  if (b.li_sent != null) run('UPDATE contacts SET li_sent=? WHERE id=?', b.li_sent ? new Date().toISOString() : null, id);
+  if (b.call_status === 'ilgilendi') { run("UPDATE leads SET stage='yanıtladı' WHERE contact_id=?", id); run("UPDATE outbox SET status='iptal', error='telefonda ilgilendi' WHERE contact_id=? AND status IN ('sırada','taslak') AND step<100", id); event('reply', `📞 Telefonda ilgilendi: ${get('SELECT name, company FROM contacts WHERE id=?', id)?.name || ''} — ${b.call_note || ''}`); }
+  if (b.call_status === 'ilgisiz') { run("UPDATE leads SET stage='ilgisiz' WHERE contact_id=?", id); run("UPDATE outbox SET status='iptal', error='telefonda ilgisiz' WHERE contact_id=? AND status IN ('sırada','taslak') AND step<100", id); }
+  res.json({ ok: true });
+});
 app.get('/api/calls', auth, (req, res) => {
   const { campaign, status, q } = req.query; const a = [];
   let sql = `SELECT co.*, k.name AS campaign,

@@ -16,6 +16,6 @@ Hype Vision'ın satış/lead platformu: hedef firma bul (OpenAI + web araması) 
 - 2026-10-21 itibarıyla yerel kod sunucudan ileride (11 dosya farklı: ai, db, emailguess, notify, osb, results, rr, smtpverify, verify, public/app.js…). Deploy etmeden önce kontrol et.
 
 ## Aynı sunucudaki diğer projeler
-- task.hypevisionlab.com → `/opt/hype-task`, yerel: `Desktophype-task` (bkz. CLAUDE.md orada)
-- Hype Live → `/opt/hype-live/template`, yerel: `Desktophype-live`
+- task.hypevisionlab.com → `/opt/hype-task`, yerel: `C:\Users\Fahrihan\Desktop\hype-task` (bkz. CLAUDE.md orada)
+- Hype Live → `/opt/hype-live/template`, yerel: `C:\Users\Fahrihan\Desktop\hype-live`
 - Ayrıca: `orbisoft-api` (app.orbisoft.com.tr), Docker'da `parca-ai` (parca.hypevisionlab.com, :3010) ve `evolution` (WhatsApp API, :8099).

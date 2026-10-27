@@ -13,7 +13,14 @@ Hype Vision'ın satış/lead platformu: hedef firma bul (OpenAI + web araması) 
 - Kod: `/opt/emre-lead/app` · Veri: `/opt/emre-lead/data` (app.db) · Yedekler: `app.old`, `app.bak-*`
 - Servis: `emre-lead.service` (systemd, `node server.js`, port 8090) → nginx `lead.hypevisionlab.com` proxy.
 - Deploy: değişen dosyaları scp ile `/opt/emre-lead/app`'e kopyala (sahip `emrelead`), `systemctl restart emre-lead`, `journalctl -u emre-lead -n 50`.
-- 2026-10-21 itibarıyla yerel kod sunucudan ileride (11 dosya farklı: ai, db, emailguess, notify, osb, results, rr, smtpverify, verify, public/app.js…). Deploy etmeden önce kontrol et.
+- 2026-10-27: sunucu = repo (deploy edildi). Deploy öncesi yedek: `app.bak-<tarih>` + `data/app.db.bak-<tarih>`.
+
+## Yurt dışı modu (2026-10-27'den beri)
+- Türkiye pazarından çıkıldı: `settings.intl_only` (yoksa açık; '0' = eski Türkiye davranışı). Türkiye'deki kişi/firmaya soğuk mail gitmez (`mailer.isTR`), Türkiye kampanyası açılmaz, eski Türkiye kampanyaları 'duraklatıldı'.
+- Tüm mailler İngilizce; hedef: Türkiye hariç tüm dünya, 50–2000 çalışanlı, kendi fabrikasında üretim yapan firmalar. Dev markalar/kamu (`mailer.isBig`) elenir.
+- Gönderim alıcının yerel saatinde (`lib/tz.js`, schedule.start–end yerel). İlk maile çıkış cümlesi (GDPR) otomatik.
+- İngilizce profil `lib/profile-en.js` (eski Türkçe profil `settings.project_tr`), şablonlar `lib/templates-seed-en.js` (eski şablonlar "Arşiv · ").
+- Randevu: TR 10–21, sayfa ve davet İngilizce, saatler ziyaretçinin saat diliminde; hazırlık sayfası `/brief`.
 
 ## Aynı sunucudaki diğer projeler
 - task.hypevisionlab.com → `/opt/hype-task`, yerel: `C:\Users\Fahrihan\Desktop\hype-task` (bkz. CLAUDE.md orada)

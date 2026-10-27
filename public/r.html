@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Görüşme planla · Hype Vision</title>
+<title>Book a meeting · Hype Vision</title>
 <link rel="icon" href="/img/icon-32.png">
 <style>
 :root{--bg:#f6f8fb;--card:#fff;--txt:#0f172a;--mut:#64748b;--line:#e5e9f0;--pri:#0b2448;--acc:#0891b2;--accbg:#ecfeff}
@@ -34,49 +34,60 @@ button.go:disabled{opacity:.6}
 <body>
 <div class="wrap">
   <div class="top"><img src="/img/logo-dark.png" alt="Hype Vision" onerror="this.src='/img/logo-light.png'"></div>
-  <div class="card" id="app"><p class="s">Yükleniyor…</p></div>
-  <div class="foot">Saatler Türkiye saatidir (GMT+3) · hypevisionlab.com</div>
+  <div class="card" id="app"><p class="s">Loading…</p></div>
+  <div class="foot" id="tz">hypevisionlab.com</div>
 </div>
 <script>
 const tok = location.pathname.split('/').filter(Boolean).pop();
 const app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const DN = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'], MN = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-const tr = iso => new Date(Date.parse(iso) + 3 * 3600e3);
-const hm = iso => tr(iso).toISOString().slice(11, 16);
-let D, day = 0, pick = null;
-fetch('/api/public/booking/' + tok).then(r => r.ok ? r.json() : Promise.reject()).then(d => { D = d; draw(); })
-  .catch(() => app.innerHTML = '<h1>Bağlantı geçersiz</h1><p class="s">Bu randevu bağlantısı geçerli değil. info@hypevisionlab.com adresine yazabilirsiniz.</p>');
+// Saatler ziyaretçinin kendi saat diliminde gösterilir (sunucu ISO/UTC gönderir)
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const fmt = (iso, o) => new Intl.DateTimeFormat('en-GB', { timeZone: TZ, ...o }).format(new Date(iso));
+const hm = iso => fmt(iso, { hour: '2-digit', minute: '2-digit', hour12: false });
+const dkey = iso => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+const full = iso => fmt(iso, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false });
+document.getElementById('tz').textContent = `Times are shown in your time zone (${TZ}) · hypevisionlab.com`;
+let D, days = [], day = 0, pick = null;
+function load() {
+  return fetch('/api/public/booking/' + tok).then(r => r.ok ? r.json() : Promise.reject()).then(d => {
+    D = d; const by = {};
+    for (const x of d.days) for (const s of x.slots) (by[dkey(s)] ||= []).push(s);
+    days = Object.keys(by).sort().map(k => ({ day: k, first: by[k][0], slots: by[k] }));
+    if (day >= days.length) day = 0; draw();
+  });
+}
+load().catch(() => app.innerHTML = '<h1>Invalid link</h1><p class="s">This booking link is not valid. Please write to info@hypevisionlab.com.</p>');
 function draw() {
-  if (!D.days.length) { app.innerHTML = '<h1>Uygun saat kalmadı</h1><p class="s">Önümüzdeki günler dolu görünüyor, lütfen e-postaya yanıt vererek bize yazın.</p>'; return; }
-  const dd = D.days[day];
+  if (!days.length) { app.innerHTML = '<h1>No times available</h1><p class="s">The coming days are fully booked. Please reply to our email and we will find a time.</p>'; return; }
+  const dd = days[day];
   app.innerHTML = `<h1>${esc(D.title)}</h1>
-    <p class="s">${D.name ? esc(D.name.split(' ')[0]) + ' merhaba, ' : ''}${D.dur} dakikalık online görüşme için size uygun saati seçin. Mevcut kameralarınızla neler yapılabileceğini kısaca gösteriyoruz.</p>
-    ${D.existing ? `<div class="sum">Zaten planlanmış görüşmeniz var: <b>${esc(D.existing)}</b>. Yeni bir saat seçerseniz ek görüşme oluşturulur.</div>` : ''}
-    <div class="days">${D.days.map((x, i) => { const t = new Date(x.day + 'T12:00:00Z'); return `<button class="day ${i === day ? 'on' : ''}" data-d="${i}"><small>${DN[t.getUTCDay()]}</small><b>${t.getUTCDate()}</b><small>${MN[t.getUTCMonth()]}</small></button>`; }).join('')}</div>
+    <p class="s">${D.name ? 'Hi ' + esc(D.name.split(' ')[0]) + ', p' : 'P'}ick a time for a ${D.dur}-minute online presentation. We'll show you live what AI can detect with your existing cameras.</p>
+    ${D.existing_iso ? `<div class="sum">You already have a meeting booked: <b>${esc(full(D.existing_iso))}</b>. Choosing a new time creates an additional meeting.</div>` : ''}
+    <div class="days">${days.map((x, i) => `<button class="day ${i === day ? 'on' : ''}" data-d="${i}"><small>${fmt(x.first, { weekday: 'short' })}</small><b>${fmt(x.first, { day: 'numeric' })}</b><small>${fmt(x.first, { month: 'short' })}</small></button>`).join('')}</div>
     <div class="slots">${dd.slots.map(s => `<button class="slot ${s === pick ? 'on' : ''}" data-s="${s}">${hm(s)}</button>`).join('')}</div>
     <form id="f" class="${pick ? 'show' : ''}">
       <div class="sum" id="sel"></div>
-      <div class="g2"><label>Ad soyad<input name="name" required value="${esc(D.name)}" ${D.general ? '' : 'readonly'}></label><label>Firma<input name="company" required value="${esc(D.company)}" ${D.general ? '' : 'readonly'}></label></div>
-      <div class="g2"><label>E-posta<input name="email" type="email" required value="${esc(D.email)}"></label><label>Telefon (isteğe bağlı)<input name="phone" type="tel"></label></div>
-      <label>Konuşmak istediğiniz konu (isteğe bağlı)<textarea name="note" rows="3" placeholder="ör. depo forklift güvenliği, KKD denetimi, hat duruşları…"></textarea></label>
-      <button class="go" id="go">Görüşmeyi onayla</button><div class="err" id="err"></div>
+      <div class="g2"><label>Full name<input name="name" required value="${esc(D.name)}" ${D.general ? '' : 'readonly'}></label><label>Company<input name="company" required value="${esc(D.company)}" ${D.general ? '' : 'readonly'}></label></div>
+      <div class="g2"><label>Email<input name="email" type="email" required value="${esc(D.email)}"></label><label>Phone (optional)<input name="phone" type="tel"></label></div>
+      <label>What would you like to discuss? (optional)<textarea name="note" rows="3" placeholder="e.g. forklift safety in the warehouse, PPE compliance, line downtime…"></textarea></label>
+      <button class="go" id="go">Confirm meeting</button><div class="err" id="err"></div>
     </form>`;
-  if (pick) { const t = tr(pick); document.getElementById('sel').innerHTML = `Seçilen: <b>${t.getUTCDate()} ${MN[t.getUTCMonth()]} ${DN[t.getUTCDay()]} · ${hm(pick)}</b> (${D.dur} dk)`; }
+  if (pick) document.getElementById('sel').innerHTML = `Selected: <b>${esc(full(pick))}</b> (${D.dur} min)`;
   app.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { day = +b.dataset.d; draw(); });
   app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { pick = b.dataset.s; draw(); document.getElementById('f').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   const f = document.getElementById('f');
   f.onsubmit = async e => {
-    e.preventDefault(); const go = document.getElementById('go'); go.disabled = true; go.textContent = 'Onaylanıyor…';
+    e.preventDefault(); const go = document.getElementById('go'); go.disabled = true; go.textContent = 'Confirming…';
     const body = Object.fromEntries(new FormData(f)); body.start = pick;
     try {
       const r = await fetch('/api/public/booking/' + tok, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Bir sorun oluştu');
-      app.innerHTML = `<div class="ok"><div class="i">✅</div><h1>Görüşme planlandı</h1><p class="s">${esc(j.when)} (Türkiye saati). Takvim daveti <b>${esc(body.email)}</b> adresine gönderildi.${j.meet ? `<br>Bağlantı: <a href="${esc(j.meet)}">${esc(j.meet)}</a>` : ''}</p><p class="s">Görüşmek üzere!</p></div>`;
+      if (!r.ok) throw Object.assign(new Error(j.error || 'Something went wrong'), { code: r.status });
+      app.innerHTML = `<div class="ok"><div class="i">✅</div><h1>Meeting booked</h1><p class="s">${esc(full(pick))} (${esc(TZ)}). A calendar invitation has been sent to <b>${esc(body.email)}</b>.${j.meet ? `<br>Link: <a href="${esc(j.meet)}">${esc(j.meet)}</a>` : ''}</p><p class="s"><a href="/brief">See what to expect in the session →</a></p><p class="s">Talk soon!</p></div>`;
     } catch (er) {
-      document.getElementById('err').textContent = er.message; go.disabled = false; go.textContent = 'Görüşmeyi onayla';
-      if (/uygun değil/.test(er.message)) fetch('/api/public/booking/' + tok).then(r => r.json()).then(d => { D = d; pick = null; draw(); });
+      document.getElementById('err').textContent = er.message; go.disabled = false; go.textContent = 'Confirm meeting';
+      if (er.code === 409) { pick = null; load(); }
     }
   };
 }

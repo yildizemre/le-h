@@ -24,6 +24,26 @@ if (setting('tpl_seed') !== 'v2') {
     if (!get('SELECT 1 FROM templates WHERE name=?', t.name)) run('INSERT INTO templates(user_id,name,subject,body) VALUES(1,?,?,?)', t.name, t.subject, t.body);
   setSetting('tpl_seed', 'v2');
 }
+// v3: yurt dışı (global) İngilizce set; eski şablonlar silinmez, "Arşiv · " önekiyle listenin sonuna iner
+if (setting('tpl_seed_en') !== 'v3') {
+  const en = require('./lib/templates-seed-en');
+  for (const t of all('SELECT id, name FROM templates'))
+    if (!en.some(x => x.name === t.name) && !/^Arşiv · /.test(t.name)) run('UPDATE templates SET name=? WHERE id=?', 'Arşiv · ' + t.name, t.id);
+  for (const t of [...en].reverse()) // liste id DESC sıralı: ilk şablon en üstte görünsün
+    if (!get('SELECT 1 FROM templates WHERE name=?', t.name)) run('INSERT INTO templates(user_id,name,subject,body) VALUES(1,?,?,?)', t.name, t.subject, t.body);
+  setSetting('tpl_seed_en', 'v3');
+}
+// Yurt dışı: İngilizce şirket profili (AI her mailde bunu kullanır) + imzalarda Türkçe açık adres yerine kısa İngilizce adres.
+// Eski profil 'project_tr' ayarında saklanır.
+if (setting('profile_en') !== 'v1') {
+  const old = jsonSetting('project', {});
+  if (!setting('project_tr')) setSetting('project_tr', JSON.stringify(old));
+  setSetting('project', JSON.stringify({ ...old, ...require('./lib/profile-en') }));
+  const addr = /Muallimköy Mah\.[\s\S]*?KOCAEL[İI]/g, en = 'Gebze, Kocaeli · Türkiye';
+  for (const u of all("SELECT id, signature FROM users WHERE signature LIKE '%Muallimköy%'")) run('UPDATE users SET signature=? WHERE id=?', u.signature.replace(addr, en), u.id);
+  for (const s of all("SELECT id, signature FROM senders WHERE signature LIKE '%Muallimköy%'")) run('UPDATE senders SET signature=? WHERE id=?', s.signature.replace(addr, en), s.id);
+  setSetting('profile_en', 'v1');
+}
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '5mb' }));

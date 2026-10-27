@@ -186,9 +186,10 @@ PAGES.project = tryT(async () => {
 });
 
 // ================= Kampanyalar =================
-const COUNTRIES = ['Türkiye', 'Almanya', 'Avusturya', 'İsviçre', 'Hollanda', 'Belçika', 'Fransa', 'İtalya', 'İspanya', 'Polonya', 'Çekya', 'Romanya', 'Bulgaristan', 'Macaristan', 'İngiltere', 'İrlanda', 'İsveç', 'Danimarka', 'Norveç', 'ABD', 'Kanada', 'Meksika', 'Brezilya', 'BAE', 'Suudi Arabistan', 'Katar', 'Mısır', 'Fas', 'Azerbaycan', 'Kazakistan', 'Özbekistan', 'Gürcistan', 'Irak', 'Hindistan', 'Endonezya', 'Malezya', 'Güney Afrika'];
+// Yurt dışı modu: Türkiye listeden çıkarıldı (sunucu da Türkiye kampanyasını reddeder)
+const COUNTRIES = ['Almanya', 'Avusturya', 'İsviçre', 'Hollanda', 'Belçika', 'Fransa', 'İtalya', 'İspanya', 'Polonya', 'Çekya', 'Romanya', 'Bulgaristan', 'Macaristan', 'İngiltere', 'İrlanda', 'İsveç', 'Danimarka', 'Norveç', 'ABD', 'Kanada', 'Meksika', 'Brezilya', 'BAE', 'Suudi Arabistan', 'Katar', 'Mısır', 'Fas', 'Azerbaycan', 'Kazakistan', 'Özbekistan', 'Gürcistan', 'Irak', 'Hindistan', 'Endonezya', 'Malezya', 'Güney Afrika'];
 const SECTORS = ['Otomotiv yan sanayi', 'Metal / döküm', 'Gıda üretimi', 'Tekstil', 'Plastik / kauçuk', 'Kimya', 'Beyaz eşya / elektronik', 'Mobilya', 'Ambalaj', 'İnşaat malzemesi', 'Lojistik / depo', 'Enerji', 'Tersane', 'İlaç'];
-const PLACES = ['Kocaeli', 'Bursa', 'İstanbul', 'Sakarya', 'Tekirdağ', 'Manisa', 'İzmir', 'Ankara', 'Konya', 'Kayseri', 'Gaziantep', 'Denizli', 'Trabzon', 'Eskişehir'];
+const PLACES = ['Bavyera', 'Baden-Württemberg', 'NRW', 'Silezya', 'Lodz', 'Bohemya', 'Lombardiya', 'Katalonya', 'Midlands', 'Ohio', 'Michigan', 'Ontario', 'Monterrey', 'Dubai'];
 PAGES.campaigns = tryT(async () => {
   await loadCamps();
   main.innerHTML = head('Kampanyalar', 'Satıra tıkla: bulunan firmalar, kişiler, mailler.', '<a class="btn pri" href="#newcamp">＋ Yeni kampanya</a>') +
@@ -261,7 +262,7 @@ CTAB.overview = async (c, el) => {
   timer = setInterval(() => location.hash === `#c/${c.id}` || location.hash === `#c/${c.id}/overview` ? CTAB.overview(c, el) : 0, 20000);
 };
 
-const GEO = ['Türkiye', 'İstanbul', 'Kocaeli', 'Bursa', 'İzmir', 'Ankara', 'Manisa', 'Tekirdağ', 'Gaziantep', 'Kayseri', 'Konya', 'Almanya (DACH)', 'AB + İngiltere', 'ABD'];
+const GEO = ['Almanya (DACH)', 'Polonya', 'Çekya', 'İtalya', 'İspanya', 'Hollanda', 'AB + İngiltere', 'ABD', 'Kanada', 'Meksika', 'BAE', 'Suudi Arabistan'];
 const SIZE = ['Startup (1–50)', 'Orta ölçek (51–500)', 'Kurumsal (500+)', '200 altı KOBİ', 'Tek kişilik firmaları hariç tut'];
 const ROLES = ['İSG / HSE yöneticileri', 'Fabrika / tesis müdürleri', 'Üretim müdürleri', 'Kurucular ve CEO\'lar', 'BT karar vericileri', 'Bakım müdürleri', 'Operasyon direktörleri', 'Bireysel çalışanları hariç tut'];
 CTAB.targeting = async (c, el) => {
@@ -811,7 +812,7 @@ async function ideasInto(el, fresh) {
     el.onclick = e => {
       const b = e.target.closest('[data-go]'); if (!b) return; const x = list[+b.dataset.go];
       busyBtn(b, async () => {
-        const { id } = await post('/api/campaigns/quick', { sector: x.sector, location: x.location || '', country: x.country || 'Türkiye', titles: x.titles || '', count: 40, people: true, lookup: true });
+        const { id } = await post('/api/campaigns/quick', { sector: x.sector, location: x.location || '', country: x.country || '', titles: x.titles || '', count: 40, people: true, lookup: true });
         await loadCamps(); location.hash = `c/${id}/companies`; toast('Kampanya başladı — AI firmaları arıyor');
       }, 'Başlatılıyor');
     };
@@ -870,7 +871,7 @@ PAGES.newcamp = () => {
     <div class="row" style="margin-top:14px"><label class="inline"><input type="checkbox" name="lookup" checked> Mailini de çıkar</label><span class="sp"></span><button class="btn pri">${ico('users')} Yetkilileri bul</button></div></form>
   <form class="card quick hide" id="pf2"><h3>Çözüm ortağı bul</h3><p class="hint">Katalogdaki ortaklık modeli: OSGB'ler, CCTV entegratörleri, otomasyon ve yazılım firmaları kendi müşterilerine Hype Vision satar. Bir ortak onlarca tesis demektir. Her firmadan genel müdür / kurucu / iş geliştirme yetkilisi ve santral numarası bulunur.</p>
     <label>Ortak türü</label><div class="chips" id="ptypes" style="margin:6px 0 14px">${PTYPES.map((t, i) => `<span class="chip sug ${i < 2 ? 'on' : ''}" data-pt="${esc(t)}">${esc(t)}</span>`).join('')}</div>
-    <div class="grid g2"><label>Şehir / bölge<input name="location" placeholder="ör. Kocaeli, Bursa, İstanbul Anadolu"></label><label>Ülke<select name="country">${COUNTRIES.map(c => `<option value="${c}">${c}</option>`).join('')}</select></label></div>
+    <div class="grid g2"><label>Şehir / bölge<input name="location" placeholder="ör. Bavyera, Silezya, Ohio"></label><label>Ülke<select name="country">${COUNTRIES.map(c => `<option value="${c}">${c}</option>`).join('')}</select></label></div>
     <div class="countpick"><span>Kaç firma?</span>${COUNTS.map(n => `<label><input type="radio" name="count" value="${n}" ${n === 40 ? 'checked' : ''}><span>${n}</span></label>`).join('')}</div>
     <div class="row" style="margin-top:18px"><button class="btn pri lg">🤝 Ortak adaylarını bul</button><span class="mut" style="font-size:12.5px">Mail için "Çözüm ortaklığı · OSGB" şablonunu kullan; Arama Listesi'nden telefonla da ulaş.</span></div></form>
   <div class="card hide" id="ideaCard"><div class="card-h"><h3>✨ Şirket profiline göre AI önerileri</h3><button class="btn sm ghost" id="ideaRe2">Yeni öneriler</button></div><div id="ideas2"></div></div>`;

@@ -1073,6 +1073,9 @@ app.put('/api/companies/:id/call', auth, (req, res) => {
 app.use('/api', (req, res) => res.status(404).json({ error: 'Bulunamadı' }));
 // Kod dosyaları her açılışta doğrulansın (güncelleme sonrası eski sürüm takılı kalmasın); görseller 7 gün önbellekte
 app.get('/ci/:id-:sg.jpg', (req, res) => { const id = +req.params.id; if (!content.pubOk(id, req.params.sg)) return res.status(404).end(); const f = content.file(id); if (!require('fs').existsSync(f)) return res.status(404).end(); res.type('image/jpeg').sendFile(f); });
+// Tanıtım sunumu: hedef değişse de (Canva → kendi PDF'imiz) gönderilmiş maillerdeki link çalışmaya devam eder
+const DECK_DEF = 'https://www.canva.com/design/DAHZNLSSK-k/oNdsZShav4OVLruszdb1dQ/view';
+app.get('/deck', (req, res) => res.redirect(302, setting('deck_url') || DECK_DEF));
 app.get('/r/:tok', (req, res) => { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(__dirname, 'public', 'r.html')); });
 app.get('/cal/:k.ics', (req, res) => { if (!booking.calOk(req.params.k)) return res.status(404).end(); res.type('text/calendar; charset=utf-8').send(booking.feed()); });
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res, p) => res.setHeader('Cache-Control', /\.(html|js|css|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=604800') }));
